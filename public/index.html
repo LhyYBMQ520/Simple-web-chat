@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <link rel="stylesheet" type="text/css" href="fontawesome-free-7.2.0-web/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <title>L菌の聊天室</title>
+</head>
+
+<body>
+  <div class="app">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <i class="fa-solid fa-comments"></i> 会话列表
+      </div>
+      <div class="sessions" id="sessions"></div>
+      <div class="sidebar-footer">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">我的ID（24H 有效期）</div>
+        <div id="myId"></div>
+        <input id="targetId" placeholder="输入对方ID">
+        <button id="sendRequestBtn">
+          <i class="fa-solid fa-paper-plane"></i> 发送请求
+        </button>
+      </div>
+    </div>
+
+    <div class="chat">
+      <div class="chat-header" id="title">
+        <i class="fa-solid fa-message"></i> 请选择会话
+      </div>
+      <div class="messages" id="msgBox"></div>
+      <div class="input-bar">
+        <input id="msgInput" placeholder="输入消息">
+        <button class="send">
+          <i class="fa-solid fa-paper-plane"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 备注对话框 -->
+  <div id="remarkModalOverlay" class="remark-modal-overlay" style="display:none;">
+    <div class="remark-modal">
+      <div class="remark-modal-header">设置备注</div>
+      <input id="remarkInput" type="text" placeholder="请输入备注名称（20字符以内）" onkeydown="if(event.key==='Enter') confirmRemark()" />
+      <div class="remark-modal-buttons">
+        <button class="remark-confirm-btn" onclick="confirmRemark()">确认</button>
+        <button class="remark-cancel-btn" onclick="closeRemarkModal()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/script.js"></script>
+</body>
+</html>
