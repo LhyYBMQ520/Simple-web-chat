@@ -116,7 +116,7 @@ Simple-web-chat/
 ├── package.json             # Project config
 ├── README.md                # Documentation
 ├── LICENSE                  # License
-├── chat.db                  # SQLite database (generated at runtime)
+├── db/                      # Session databases (auto-generated)
 └── public/                  # Frontend static files
     ├── index.html          # Main HTML
     ├── css/
@@ -135,6 +135,9 @@ Simple-web-chat/
 - **Message routing**: Forwards messages between users
 - **Online list broadcast**: Pushes real-time online user list
 - **Data persistence**: Stores all messages in SQLite
+- **UID lifecycle management**: Records UID creation time, auto-calculates 24-hour expiration, enforces validity checks on both frontend and backend
+- **Session-based independent database storage**: Each session owns an independent database file stored in `/db` directory with filename format `uid1,uid2.db` (sorted to avoid duplicates)
+- **Auto-cleanup strategy**: Periodically detects expired UIDs and automatically deletes corresponding database files with retry mechanism for safe deletion
 
 ### Frontend
 
@@ -143,6 +146,7 @@ Simple-web-chat/
 - **Local storage**: Saves sessions, nicknames, and IDs via localStorage
 - **History loading**: Loads past messages from server
 - **Status sync**: Updates online status and unread count in real time
+- **UID status display**: Real-time display of remaining UID validity period with warning indicators for expiring UIDs
 
 ## 📊 Database Design
 
@@ -183,7 +187,6 @@ All messages use JSON format. Common types:
 ## 📅 Future Plans
 
 - [ ] Add end-to-end encryption and privacy features ⭐
-- [ ] Auto-clean expired messages and old IDs
 - [ ] Support file and image transmission
 - [ ] Group chat
 - [ ] Message search and filter

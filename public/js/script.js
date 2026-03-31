@@ -6,25 +6,93 @@
     let unreadCount = {}; // 未读消息计数
     let onlineUsers = [];
     let contextMenuTargetId = null; // 右键菜单目标
+    
+    // ========== UID 状态管理 ==========
+    let uidStatus = 'valid'; // valid, about_to_expire, expired
+    let uidTTL = 0; // 剩余时间（毫秒）
 
     // 初始化ID
     function initID() {
-      const now = Date.now();
       const id = localStorage.getItem('uid');
       const exp = +localStorage.getItem('exp') || 0;
-      if (id && now < exp) {
-        myId = id;
-      } else {
+      const now = Date.now();
+      
+      // 前端本地检查（备用）
+      if (!id || now >= exp) {
+        // 生成新 UID
         myId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('uid', myId);
-        localStorage.setItem('exp', now + 86400000);
+        localStorage.setItem('exp', now + 24 * 60 * 60 * 1000); // 24小时
+      } else {
+        myId = id;
       }
-      document.getElementById('myId').innerHTML = `
+      
+      updateUIDDisplay();
+    }
+
+    // 更新 UID 显示（显示状态和剩余时间）
+    function updateUIDDisplay() {
+      const element = document.getElementById('myId');
+      let statusText = '';
+      let statusColor = '#2ecc71'; // 绿色：有效
+      
+      if (uidStatus === 'expired') {
+        statusText = '❌ 已过期，请刷新页面';
+        statusColor = '#e74c3c'; // 红色：过期
+      } else if (uidStatus === 'about_to_expire') {
+        const minutes = Math.floor(uidTTL / 60000);
+        const seconds = Math.floor((uidTTL % 60000) / 1000);
+        statusText = `⚠️ 即将过期（${minutes}:${String(seconds).padStart(2, '0')}）`;
+        statusColor = '#f39c12'; // 橙色：即将过期
+      } else {
+        const hours = Math.floor(uidTTL / 3600000);
+        const minutes = Math.floor((uidTTL % 3600000) / 60000);
+        statusText = `✓ ${hours}小时${minutes}分钟后过期`;
+        statusColor = '#2ecc71'; // 绿色：有效
+      }
+      
+      element.innerHTML = `
         <span>${myId}</span>
+        <span style="
+          display: inline-block;
+          background: ${statusColor};
+          color: white;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 12px;
+          margin-left: 8px;
+        ">${statusText}</span>
         <button class="copy-btn" onclick="copyMyId()" title="复制ID">
           <i class="fa-solid fa-copy"></i>
         </button>
       `;
+    }
+
+    // 定期更新 UID 显示（每秒更新一次）
+    function startUIDStatusUpdater() {
+      setInterval(() => {
+        if (uidTTL > 0) {
+          uidTTL -= 1000;
+          if (uidTTL < 0) uidTTL = 0;
+          
+          // ✨ 自动状态转换：当剩余时间少于5分钟时
+          if (uidTTL < 5 * 60 * 1000 && uidTTL > 0 && uidStatus === 'valid') {
+            uidStatus = 'about_to_expire';
+          }
+          
+          updateUIDDisplay();
+          
+          // ✨ 时间到期时自动刷新（任何非'expired'状态都会触发）
+          if (uidTTL <= 0 && uidStatus !== 'expired') {
+            uidStatus = 'expired';
+            updateUIDDisplay();
+            setTimeout(() => {
+              alert('❌ 您的 UID 已过期！将刷新页面...');
+              location.reload();
+            }, 500);
+          }
+        }
+      }, 1000);
     }
 
     // 复制我的ID
@@ -89,6 +157,39 @@
 
       ws.onmessage = e => {
         const d = JSON.parse(e.data);
+        
+        // ========== 处理 UID 绑定结果 ==========
+        if (d.type === 'bindResult') {
+          if (!d.success) {
+            // UID 已过期
+            uidStatus = 'expired';
+            updateUIDDisplay();
+            alert('❌ 您的 UID 已过期！\n\n' + d.message);
+            // 清除本地存储，迫使用户刷新页面
+            localStorage.removeItem('uid');
+            localStorage.removeItem('exp');
+            setTimeout(() => location.reload(), 1500);
+            return;
+          }
+          
+          // 绑定成功
+          uidTTL = d.ttl;
+          uidStatus = d.status;
+          updateUIDDisplay();
+          console.log(`[UID 绑定成功] 状态: ${d.status} | 剩余: ${Math.floor(d.ttl / 1000)}秒`);
+          return;
+        }
+        
+        // ========== 处理错误消息 ==========
+        if (d.type === 'error') {
+          console.error('[后端错误]', d.message);
+          if (d.message.includes('过期')) {
+            uidStatus = 'expired';
+            updateUIDDisplay();
+          }
+          return;
+        }
+        
         if (d.type === 'request') {
           if (confirm(`${d.from.slice(0, 8)} 请求连接，是否同意？`)) {
             accept(d.from);
@@ -374,6 +475,7 @@
     // 绑定所有事件
     window.onload = () => {
       initID();
+      startUIDStatusUpdater(); // ⭐新增：启动 UID 状态更新器
       connect();
       render();
 
