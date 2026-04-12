@@ -195,6 +195,11 @@ button:hover {
   border-radius: 18px;
   line-height: 1.4;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  word-break: break-word;
 }
 
 .msg.me {
@@ -207,6 +212,63 @@ button:hover {
   align-self: flex-start;
   background: white;
   color: #1e293b;
+}
+
+.msg.recalled {
+  background: #e2e8f0 !important;
+  color: #64748b !important;
+  font-style: italic;
+}
+
+.msg-text {
+  white-space: pre-wrap;
+}
+
+.msg-meta {
+  font-size: 11px;
+  opacity: 0.75;
+  align-self: flex-end;
+}
+
+.msg.other .msg-meta {
+  align-self: flex-start;
+}
+
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  align-self: flex-end;
+}
+
+.msg-action-btn {
+  width: 26px;
+  height: 26px;
+  margin-top: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  cursor: pointer;
+}
+
+.msg-action-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.msg-action-btn.recall {
+  background: rgba(239, 68, 68, 0.95);
+}
+
+.msg-action-btn.recall:hover {
+  background: rgba(220, 38, 38, 0.95);
+}
+
+.msg.other .msg-action-btn {
+  display: none;
 }
 
 .input-bar {
@@ -392,6 +454,10 @@ button:hover {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .msg {
+    max-width: 82%;
   }
 
   .back-btn {

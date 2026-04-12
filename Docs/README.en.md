@@ -21,6 +21,8 @@ Simple-web-chat is a lightweight, out-of-the-box web chat system. Users can quic
 - **👥 Online status**: Real-time online/offline status for contacts
 - **📝 User nicknames**: Set nicknames for contacts for easy identification
 - **🔔 Unread reminders**: Unread message notifications
+- **✏️ Message edit & recall**: Edit your sent messages or recall them into a system notice state
+- **✅ Per-message read status**: Show read/unread status next to the timestamp on each message, with real-time sync
 - **📱 Responsive design**: Optimized for both desktop and mobile screens
 - **⚙️ Zero configuration**: Ready to use without complex setup
 
@@ -48,7 +50,7 @@ Simple-web-chat is a lightweight, out-of-the-box web chat system. Users can quic
 ### Requirements
 
 - Node.js 14.0 or later (developed on v22)
-- npm or equivalent package manager
+- pnpm or equivalent package manager
 
 ### Installation
 
@@ -62,13 +64,13 @@ cd Simple-web-chat
 2. **Install dependencies**
 
 ```bash
-npm i
+pnpm i
 ```
 
 3. **Start the server**
 
 ```bash
-npm start
+pnpm start
 ```
 
 The server runs on port `21451`.
@@ -106,6 +108,9 @@ Visit `http://IP:21451`
 - **Online status**: Green dot = online, red dot = offline
 - **Unread count**: Small red badge appears for unread messages
 - **Message history**: Automatically loaded when switching conversations
+- **Message edit/recall**: Only your own sent messages can be edited or recalled; recalled messages are shown as system-style recall text
+- **Message meta text**: Normal messages show `time · Read/Unread`; edited messages show `edited time · Edited · Read/Unread`
+- **Recalled message display rule**: Recalled messages hide both timestamp and read/unread meta text
 - **ID expiration**: IDs expire after 24 hours; a new ID is generated automatically
 
 ## 📁 Project Structure
@@ -135,6 +140,8 @@ Simple-web-chat/
 - **Message routing**: Forwards messages between users
 - **Online list broadcast**: Pushes real-time online user list
 - **Data persistence**: Stores all messages in SQLite
+- **Message edit/recall**: Provides `editMessage` and `recallMessage` handlers with ownership/session validation, then broadcasts updates to both sides
+- **Read-state synchronization**: Uses `read_at` to persist read state; updates read status when user opens a conversation or is actively viewing it
 - **UID lifecycle management**: Records UID creation time, auto-calculates 24-hour expiration, enforces validity checks on both frontend and backend
 - **Session-based independent database storage**: Each session owns an independent database file stored in `/db` directory with filename format `uid1,uid2.db` (sorted to avoid duplicates)
 - **Auto-cleanup strategy**: Periodically detects expired UIDs and automatically deletes corresponding database files with retry mechanism for safe deletion
@@ -146,6 +153,9 @@ Simple-web-chat/
 - **Local storage**: Saves sessions, nicknames, and IDs via localStorage
 - **History loading**: Loads past messages from server
 - **Status sync**: Updates online status and unread count in real time
+- **Message actions**: Supports editing and recalling self-sent messages with real-time UI updates
+- **Read receipt rendering**: Shows read/unread next to message time and updates immediately on `messagesRead` events
+- **Edited-time rendering**: After editing, the message meta time is updated to the edited timestamp and marked as `Edited`
 - **UID status display**: Real-time display of remaining UID validity period with warning indicators for expiring UIDs
 
 ## 📊 Database Design
@@ -159,6 +169,9 @@ Simple-web-chat/
 | receiver | TEXT    | Receiver user ID     |
 | content  | TEXT    | Message content      |
 | time     | INTEGER | Timestamp            |
+| status   | TEXT    | Message status (`normal` / `recalled`) |
+| edited_at| INTEGER | Edited timestamp (`NULL` if not edited) |
+| read_at  | INTEGER | Read timestamp (`NULL` if unread) |
 
 ## 🌐 WebSocket Protocol
 
@@ -177,8 +190,32 @@ All messages use JSON format. Common types:
 // Send message
 {type: "message", to: "target_id", content: "message_content"}
 
+// Edit message
+{type: "editMessage", to: "target_id", messageId: 1, content: "new_content"}
+
+// Recall message
+{type: "recallMessage", to: "target_id", messageId: 1}
+
+// Report active conversation (for read-state detection)
+{type: "activeChat", with: "other_id"}
+
 // Get chat history
 {type: "getHistory", with: "other_id"}
+
+// Chat history response (each item is a full message object)
+{type: "history", list: [{id, sender, receiver, content, time, status, editedAt, readAt}]}
+
+// Real-time message
+{type: "msg", message: {id, sender, receiver, content, time, status, editedAt, readAt}}
+
+// Message edited
+{type: "messageEdited", message: {id, sender, receiver, content, time, status, editedAt, readAt}}
+
+// Message recalled
+{type: "messageRecalled", message: {id, sender, receiver, content, time, status, editedAt, readAt}}
+
+// Batch read-receipt updates
+{type: "messagesRead", messages: [{id, sender, receiver, content, time, status, editedAt, readAt}]}
 
 // Online user list
 {type: "online", list: ["user1", "user2", ...]}
@@ -186,12 +223,10 @@ All messages use JSON format. Common types:
 
 ## 📅 Future Plans
 
-- [ ] Add end-to-end encryption and privacy features ⭐
+- [ ] Add end-to-end encryption and privacy features ( Am I going to die too .png )
 - [ ] Support file and image transmission
 - [ ] Group chat
 - [ ] Message search and filter
-- [ ] Message recall and edit
-- [ ] Read/delivered status indicators
 - [ ] "Typing..." status
 
 ## 🔒 Security
