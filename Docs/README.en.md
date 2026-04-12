@@ -2,7 +2,7 @@
 
 A simple and efficient web-based instant chat application built with Node.js and WebSocket, supporting real-time messaging, conversation management, and message history.
 
-### (This document was translated by Doubao AI, AI may make mistakes.)
+### (This document was translated by AI, AI may make mistakes.)
 
 # Language
 
