@@ -256,6 +256,7 @@ All messages use JSON format. Common types:
 - [ ] Message search and filter
 - [ ] "Typing..." status
 - [ ] The input field supports manual line breaks, and pasted text retains its original formatting
+- [ ] Dark theme adaptation
 
 ## 🔒 Security
 
