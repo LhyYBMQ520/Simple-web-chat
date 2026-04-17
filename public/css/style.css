@@ -34,6 +34,44 @@ body {
   font-weight: 600;
   font-size: 16px;
   color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sidebar-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  white-space: nowrap;
+}
+
+.connection-status.connected {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.connection-status.connecting,
+.connection-status.reconnecting {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.connection-status.disconnected {
+  color: #b91c1c;
+  background: #fee2e2;
 }
 
 .sessions {
@@ -454,6 +492,12 @@ button:hover {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .connection-status {
+    font-size: 11px;
+    padding: 2px 6px;
+    gap: 4px;
   }
 
   .msg {

@@ -12,7 +12,13 @@
   <div class="app">
     <div class="sidebar">
       <div class="sidebar-header">
-        <i class="fa-solid fa-comments"></i> 会话列表
+        <div class="sidebar-header-title">
+          <i class="fa-solid fa-comments"></i> 会话列表
+        </div>
+        <div class="connection-status connecting" id="connectionStatus" title="连接中">
+          <i class="fa-solid fa-circle-notch fa-spin"></i>
+          <span>连接中</span>
+        </div>
       </div>
       <div class="sessions" id="sessions"></div>
       <div class="sidebar-footer">
@@ -51,6 +57,11 @@
     </div>
   </div>
 
+  <script src="js/app-state.js"></script>
+  <script src="js/uid-module.js"></script>
+  <script src="js/message-module.js"></script>
+  <script src="js/session-module.js"></script>
+  <script src="js/ws-module.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>

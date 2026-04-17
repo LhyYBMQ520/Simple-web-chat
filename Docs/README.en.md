@@ -23,6 +23,7 @@ Simple-web-chat is a lightweight, out-of-the-box web chat system. Users can quic
 - **🔔 Unread reminders**: Unread message notifications
 - **✏️ Message edit & recall**: Edit your sent messages or recall them into a system notice state
 - **✅ Per-message read status**: Show read/unread status next to the timestamp on each message, with real-time sync
+- **📶 Connection status & latency**: Real-time server connection status and latency shown on the right side of the conversation-list header
 - **📱 Responsive design**: Optimized for both desktop and mobile screens
 - **⚙️ Zero configuration**: Ready to use without complex setup
 
@@ -111,23 +112,38 @@ Visit `http://IP:21451`
 - **Message edit/recall**: Only your own sent messages can be edited or recalled; recalled messages are shown as system-style recall text
 - **Message meta text**: Normal messages show `time · Read/Unread`; edited messages show `edited time · Edited · Read/Unread`
 - **Recalled message display rule**: Recalled messages hide both timestamp and read/unread meta text
+- **Connection status display**: The conversation-list header shows status icons such as connecting/reconnecting/disconnected/connected
+- **Connection latency display**: Shows real-time latency (ms) while connected
 - **ID expiration**: IDs expire after 24 hours; a new ID is generated automatically
 
 ## 📁 Project Structure
 
 ```
 Simple-web-chat/
-├── server.js                 # Backend entry
+├── server.js                 # Backend entry (startup and module wiring)
 ├── package.json             # Project config
 ├── README.md                # Documentation
 ├── LICENSE                  # License
 ├── db/                      # Session databases (auto-generated)
+├── src/                     # Backend modules
+│   ├── config/
+│   │   └── constants.js     # Backend constants
+│   ├── services/
+│   │   ├── session-db-service.js  # Session DB and message persistence service
+│   │   └── uid-service.js   # UID lifecycle service
+│   └── ws/
+│       └── connection-handler.js   # WebSocket message handler
 └── public/                  # Frontend static files
     ├── index.html          # Main HTML
     ├── css/
     │   └── style.css       # Styles
     ├── js/
-    │   └── script.js       # Frontend logic
+   │   ├── app-state.js    # Frontend state module
+   │   ├── uid-module.js   # UID and copy utility module
+   │   ├── message-module.js  # Message rendering and state module
+   │   ├── session-module.js  # Session and remark management module
+   │   ├── ws-module.js    # WebSocket communication and latency-detection module
+   │   └── script.js       # Frontend entry and module composition
     └── fontawesome-free-7.2.0-web/  # Local icon library
 ```
 
@@ -135,6 +151,7 @@ Simple-web-chat/
 
 ### Backend
 
+- **Modular architecture**: `server.js` handles startup/wiring only, while core logic is split into `src/config`, `src/services`, and `src/ws`
 - **WebSocket connection management**: Maintains active client connections
 - **User binding**: Binds user ID to WebSocket connection
 - **Message routing**: Forwards messages between users
@@ -142,17 +159,21 @@ Simple-web-chat/
 - **Data persistence**: Stores all messages in SQLite
 - **Message edit/recall**: Provides `editMessage` and `recallMessage` handlers with ownership/session validation, then broadcasts updates to both sides
 - **Read-state synchronization**: Uses `read_at` to persist read state; updates read status when user opens a conversation or is actively viewing it
+- **Heartbeat response**: Handles frontend `ping` heartbeats and returns `pong` for client-side connection quality and latency measurement
 - **UID lifecycle management**: Records UID creation time, auto-calculates 24-hour expiration, enforces validity checks on both frontend and backend
 - **Session-based independent database storage**: Each session owns an independent database file stored in `/db` directory with filename format `uid1,uid2.db` (sorted to avoid duplicates)
 - **Auto-cleanup strategy**: Periodically detects expired UIDs and automatically deletes corresponding database files with retry mechanism for safe deletion
 
 ### Frontend
 
+- **Modular architecture**: `script.js` now acts as the entry/composition layer, while core logic is split into `app-state`, `uid`, `message`, `session`, and `ws` modules
 - **UI interaction**: Conversation list, chat window, input area
 - **WebSocket communication**: Persistent connection to server
 - **Local storage**: Saves sessions, nicknames, and IDs via localStorage
 - **History loading**: Loads past messages from server
 - **Status sync**: Updates online status and unread count in real time
+- **Connection status visualization**: Shows connection-state icons in the sidebar header (connecting/reconnecting/disconnected/connected)
+- **Latency measurement**: Uses WebSocket heartbeats (`ping`/`pong`) to calculate and display current connection latency
 - **Message actions**: Supports editing and recalling self-sent messages with real-time UI updates
 - **Read receipt rendering**: Shows read/unread next to message time and updates immediately on `messagesRead` events
 - **Edited-time rendering**: After editing, the message meta time is updated to the edited timestamp and marked as `Edited`
@@ -198,6 +219,12 @@ All messages use JSON format. Common types:
 
 // Report active conversation (for read-state detection)
 {type: "activeChat", with: "other_id"}
+
+// Heartbeat probe (sent by client)
+{type: "ping", clientTime: 1710000000000}
+
+// Heartbeat response (returned by server)
+{type: "pong", clientTime: 1710000000000, serverTime: 1710000000100}
 
 // Get chat history
 {type: "getHistory", with: "other_id"}
