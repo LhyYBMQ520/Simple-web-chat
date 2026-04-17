@@ -44,7 +44,7 @@
 
         return `
           <div class="session ${state.current === i ? 'active' : ''}" onclick="select('${i}')" oncontextmenu="showContextMenu(event, '${i}')" style="position:relative;">
-            <div style="display:flex;align-items:center;gap:8px">
+            <div class="session-main">
               <span style="
                 width:10px;
                 height:10px;
@@ -53,7 +53,8 @@
                 display:inline-block;
                 flex-shrink:0;
               "></span>
-              <i class="fa-solid fa-user"></i> ${displayName}
+              <i class="fa-solid fa-user"></i>
+              <span class="session-name">${displayName}</span>
             </div>
 
             <div class="del-btn" onclick="event.stopPropagation(); confirmDelete('${i}')">

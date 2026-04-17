@@ -110,6 +110,23 @@ body {
   color: #64748b;
 }
 
+.session-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.session-name {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .del-btn {
   width: 24px;
   height: 24px;

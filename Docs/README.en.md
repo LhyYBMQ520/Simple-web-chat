@@ -255,6 +255,7 @@ All messages use JSON format. Common types:
 - [ ] Group chat
 - [ ] Message search and filter
 - [ ] "Typing..." status
+- [ ] The input field supports manual line breaks, and pasted text retains its original formatting
 
 ## 🔒 Security
 
