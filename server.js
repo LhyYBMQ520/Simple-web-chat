@@ -16,6 +16,9 @@ const clients = new Map();
 const uidService = createUIDService();
 const dbService = createSessionDBService();
 
+// 启动时清理因后端关闭而遗留的过期数据库文件
+dbService.cleanupOrphanedDBFiles();
+
 function broadcastOnline() {
 	const onlineList = Array.from(clients.keys());
 

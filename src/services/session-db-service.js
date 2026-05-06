@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const { DB_DIR } = require('../config/constants');
+const { DB_DIR, UID_LIFETIME } = require('../config/constants');
 
 function createSessionDBService() {
   const sessionDBCache = new Map();
@@ -183,6 +183,42 @@ function createSessionDBService() {
     return `${text.slice(0, maxLength)}...`;
   }
 
+  function cleanupOrphanedDBFiles() {
+    if (!fs.existsSync(DB_DIR)) return;
+
+    const files = fs.readdirSync(DB_DIR);
+    const now = Date.now();
+    let deletedCount = 0;
+
+    files.forEach(file => {
+      if (!file.endsWith('.db')) return;
+
+      const filePath = path.join(DB_DIR, file);
+      try {
+        const stat = fs.statSync(filePath);
+        const fileAgeMs = stat.birthtimeMs || stat.ctimeMs;
+
+        if (now - fileAgeMs > UID_LIFETIME) {
+          try {
+            fs.unlinkSync(filePath);
+            deletedCount++;
+            console.log('[启动清理] 删除过期数据库:', file);
+          } catch (err) {
+            if (err.code !== 'ENOENT') {
+              console.error('[启动清理] 删除失败:', file, err.message);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[启动清理] 检查文件失败:', file, err.message);
+      }
+    });
+
+    if (deletedCount > 0) {
+      console.log(`[启动清理] 共清理 ${deletedCount} 个过期数据库文件`);
+    }
+  }
+
   ensureDBDirExists();
 
   return {
@@ -190,6 +226,7 @@ function createSessionDBService() {
     closeSessionDB,
     closeAllSessionDBs,
     deleteAllSessionDBsForUID,
+    cleanupOrphanedDBFiles,
     toMessagePayload,
     updateMessagesReadState,
     getConversationMessage,
