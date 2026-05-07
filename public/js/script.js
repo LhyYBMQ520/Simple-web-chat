@@ -417,7 +417,7 @@
       if (e.key !== 'Enter') return;
       if (isComposing) return;
 
-      if (e.ctrlKey || e.metaKey) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
         e.preventDefault();
         insertNewline();
         return;
