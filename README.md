@@ -4,28 +4,29 @@
 
 ## 📋 项目介绍
 
-Simple-web-chat 是一个轻量级的、开箱即用的网页聊天系统。用户无需注册即可快速获得唯一的临时 ID，通过交换 ID 可以与其他用户建立会话并进行实时对话。所有消息均被持久化存储到本地数据库，支持历史消息查看。
+Simple-web-chat 是一个轻量级的、开箱即用的网页聊天应用。用户无需注册即可快速获得唯一的临时 ID，通过交换 ID 可以与其他用户建立会话并进行实时对话。所有消息均被持久化存储到本地数据库，支持历史消息查看。
 
 ## ✨ 主要特性
 
 - **⚡ 实时通信**：基于 WebSocket 的双向实时消息传输
-- **🆔 快速入门**：自动生成唯一用户 ID，24 小时有效期
-- **💾 消息存储**：使用 SQLite 数据库持久化所有聊天记录
+- **🆔 快速入门**：自动生成唯一用户 ID，24 小时有效期的“阅后即焚”功能
+- **💾 消息存储**：使用 SQLite 数据库持久化聊天记录
 - **📋 会话管理**：支持多会话管理，易于切换
 - **👥 在线状态**：实时显示联系人在线/离线状态
 - **📝 用户备注**：为联系人设置备注名称，便于识别
 - **🔔 未读提醒**：未读消息提示，及时获取新消息通知
 - **✏️ 消息编辑与撤回**：点击编辑按钮一键回填至输入框，修改后发送即可更新消息；或撤回为系统提示态
-- **⌨️ 多行输入框**：支持桌面 Enter 发送 / 移动端 Enter 换行，Ctrl或Shift / Cmd+Enter 手动换行，粘贴文本完整保留原始换行格式，自动高度适配最多 3 行
+- **⌨️ 多行输入框**：支持桌面 Enter 发送 / 移动端 Enter 换行，Ctrl或Shift / Cmd+Enter 手动换行，粘贴文本完整保留原始换行格式，自动高度适配最多 3 行，随后使用滚动条调整上下
 - **✅ 消息已读状态**：每条消息在时间小字旁显示已读/未读状态，阅读状态可实时同步
 - **📶 连接状态与延迟**：会话列表标题右侧实时显示与服务器连接状态及网络延迟
-- **📱 响应式设计**：完美支持桌面端和移动端的屏幕比例
+- **📱 响应式设计**：完美支持桌面端和移动端的屏幕比例（尽量吧。。。移动端的不确定性太多了）
 - **⚙️ 零配置**：开箱即用，无需复杂配置
 
 ## 🛠️ 技术栈
 
 - **前端**：HTML5、CSS3、JavaScript、WebSocket
-- **后端**：Node.js、Express、WebSocket (ws)
+- **后端**：Node.js、TypeScript、Express、WebSocket (ws)
+- **运行时**：tsx（TypeScript 直接运行，无需预编译）
 - **数据库**：SQLite3 (better-sqlite3)
 - **UI 图标库**：FontAwesome 7.2.0（已本地化）
 
@@ -37,6 +38,14 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天系统。用�
     "better-sqlite3": "^12.8.0",
     "express": "^5.2.1",
     "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
   }
 }
 ```
@@ -45,35 +54,74 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天系统。用�
 
 ### 前置要求
 
-- Node.js 14.0 或以上版本，作者使用的版本为 22
-- pnpm（推荐）包管理器
+- **Node.js** 18.0 或以上版本（TypeScript + tsx 运行时要求），作者使用的版本为 24
+- **pnpm**（推荐）包管理器
+
+> 安装 Node.js：[官网下载](https://nodejs.org/) 或使用 [nvm-windows](https://github.com/coreybutler/nvm-windows)（Windows）/ [nvm](https://github.com/nvm-sh/nvm)（macOS/Linux）
+>
+> 安装 pnpm：`npm install -g pnpm`
 
 ### 安装步骤
 
-1. **克隆或下载项目**
+**1. 克隆项目**
 
 ```bash
 git clone https://github.com/LhyYBMQ520/Simple-web-chat.git
 cd Simple-web-chat
 ```
 
-2. **安装依赖**
+**2. 安装依赖**
 
 ```bash
-pnpm i
+pnpm install
 ```
 
-3. **启动服务**
+---
+
+### 开发模式（推荐日常使用）
+
+`tsx` 直接运行 TypeScript 源码，无需预编译，修改代码后重启即可生效：
 
 ```bash
-pnpm start
+pnpm dev
 ```
 
-服务将运行在 `21451` 端口
+服务将运行在 `http://localhost:21451`。
 
-4. **打开浏览器**
+---
 
-访问 `http://IP:21451` 即可使用
+### 生产模式（部署用）
+
+先编译 TypeScript 为 JavaScript，再用 Node.js 运行编译产物：
+
+```bash
+pnpm build          # 编译 TypeScript → JavaScript，输出到 dist/
+pnpm start          # 运行编译后的 dist/server.js
+```
+
+或一步完成：
+
+```bash
+pnpm build && pnpm start
+```
+
+---
+
+### 其他命令
+
+```bash
+pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
+```
+
+### 打开浏览器
+
+访问 `http://IP:21451` 即可使用（本机访问 `http://localhost:21451`）。
+
+> **💡 提示**：如果你没有安装 pnpm，也可以使用 npm：
+> ```bash
+> npm install
+> npm run dev
+> ```
 
 ## 💬 使用指南
 
@@ -116,19 +164,20 @@ pnpm start
 
 ```
 Simple-web-chat/
-├── server.js                 # 后端主入口（服务启动与模块装配）
+├── server.ts                 # 后端主入口（服务启动与模块装配）
+├── tsconfig.json            # TypeScript 编译配置
 ├── package.json             # 项目配置文件
 ├── README.md                # 项目说明文档
 ├── LICENSE                  # 开源许可证
-├── db/                      # 对话资料库（自动生成）
+├── db/                      # 会话数据库存储文件夹（自动生成）
 ├── src/                     # 后端模块目录
 │   ├── config/
-│   │   └── constants.js     # 后端常量配置
+│   │   └── constants.ts     # 后端常量配置
 │   ├── services/
-│   │   ├── session-db-service.js  # 会话数据库与消息持久化服务
-│   │   └── uid-service.js   # UID 生命周期服务
+│   │   ├── session-db-service.ts  # 会话数据库与消息持久化服务
+│   │   └── uid-service.ts   # UID 生命周期服务
 │   └── ws/
-│       └── connection-handler.js   # WebSocket 消息处理器
+│       └── connection-handler.ts   # WebSocket 消息处理器
 └── public/                  # 前端静态资源
     ├── index.html          # 主页 HTML
     ├── css/
@@ -147,7 +196,7 @@ Simple-web-chat/
 
 ### 后端实现
 
-- **模块化架构**：`server.js` 仅负责启动与装配，核心逻辑拆分到 `src/config`、`src/services`、`src/ws`
+- **模块化架构**：`server.ts` 仅负责启动与装配，核心逻辑拆分到 `src/config`、`src/services`、`src/ws`，全部使用 TypeScript 编写，具备完整的类型定义
 - **WebSocket 连接管理**：维护活跃的客户端连接映射
 - **用户绑定**：接收并绑定用户 ID 和 WebSocket 连接
 - **消息路由**：实现两个用户间的消息转发
@@ -255,6 +304,7 @@ Simple-web-chat/
 - [ ] 添加消息搜索与过滤
 - [ ] 实现对方状态显示（如输入中。。。）
 - [ ] 深色主题适配
+- [ ] 尝试添加语音通话，屏幕共享功能
 
 ## 🔒 安全性说明
 

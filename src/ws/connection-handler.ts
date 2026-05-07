@@ -1,15 +1,44 @@
-const WebSocket = require('ws');
+import { WebSocket } from 'ws';
+import type { IncomingMessage } from 'node:http';
+import type { UIDService } from '../services/uid-service.js';
+import type { SessionDBService } from '../services/session-db-service.js';
 
-function createConnectionHandler({ clients, broadcastOnline, uidService, dbService }) {
-  return (ws, req) => {
-    let uid;
+export interface ClientInfo {
+  ws: WebSocket;
+  status: string;
+  expiresAt: number | null;
+  activeChat: string | null;
+}
 
-    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+export interface ConnectionHandlerDeps {
+  clients: Map<string, ClientInfo>;
+  broadcastOnline: () => void;
+  uidService: UIDService;
+  dbService: SessionDBService;
+}
+
+type WSMessage =
+  | { type: 'ping'; clientTime?: unknown }
+  | { type: 'bind'; uid: string }
+  | { type: 'request'; to: string }
+  | { type: 'accept'; from: string }
+  | { type: 'getHistory'; with: string }
+  | { type: 'activeChat'; with?: string }
+  | { type: 'message'; to: string; content: unknown }
+  | { type: 'editMessage'; messageId: unknown; to: string; content: unknown }
+  | { type: 'recallMessage'; messageId: unknown; to: string };
+
+export function createConnectionHandler({ clients, broadcastOnline, uidService, dbService }: ConnectionHandlerDeps) {
+  return (ws: WebSocket, req: IncomingMessage): void => {
+    let uid: string | undefined;
+
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim() || req.socket.remoteAddress;
     console.log(`[连接建立] IP: ${ip}`);
 
     ws.on('message', data => {
       try {
-        const msg = JSON.parse(data);
+        const msg: WSMessage = JSON.parse(data.toString());
 
         if (msg.type === 'ping') {
           const clientTime = Number(msg.clientTime);
@@ -56,7 +85,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
         }
 
         if (msg.type === 'request') {
-          if (uidService.isUIDExpired(uid)) {
+          if (!uid || uidService.isUIDExpired(uid)) {
             ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期' }));
             return;
           }
@@ -72,7 +101,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
         }
 
         if (msg.type === 'accept') {
-          if (uidService.isUIDExpired(uid)) {
+          if (!uid || uidService.isUIDExpired(uid)) {
             ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期' }));
             return;
           }
@@ -87,7 +116,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
         }
 
         if (msg.type === 'getHistory') {
-          if (uidService.isUIDExpired(uid)) {
+          if (!uid || uidService.isUIDExpired(uid)) {
             ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期' }));
             return;
           }
@@ -95,7 +124,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
           const sessionDB = dbService.getSessionDB(uid, msg.with);
           const readUpdates = dbService.updateMessagesReadState(sessionDB, uid, msg.with);
           const history = sessionDB.prepare('SELECT * FROM messages WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?) ORDER BY time ASC');
-          const list = history.all(uid, msg.with, msg.with, uid).map(dbService.toMessagePayload);
+          const list = history.all(uid, msg.with, msg.with, uid).map(row => dbService.toMessagePayload(row as Parameters<typeof dbService.toMessagePayload>[0]));
 
           ws.send(JSON.stringify({ type: 'history', list }));
 
@@ -112,9 +141,8 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
             return;
           }
 
-          const clientInfo = clients.get(uid);
+          const clientInfo = clients.get(uid)!;
           clientInfo.activeChat = typeof msg.with === 'string' && msg.with.trim() ? msg.with.trim() : null;
-          clients.set(uid, clientInfo);
 
           if (clientInfo.activeChat) {
             console.log(`[会话激活] ${uid} 正在查看与 ${clientInfo.activeChat} 的会话`);
@@ -122,7 +150,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
         }
 
         if (msg.type === 'message') {
-          if (uidService.isUIDExpired(uid)) {
+          if (!uid || uidService.isUIDExpired(uid)) {
             ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期，无法发送消息' }));
             return;
           }
@@ -173,7 +201,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
         }
 
         if (msg.type === 'editMessage') {
-          if (uidService.isUIDExpired(uid)) {
+          if (!uid || uidService.isUIDExpired(uid)) {
             ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期，无法编辑消息' }));
             return;
           }
@@ -237,7 +265,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
         }
 
         if (msg.type === 'recallMessage') {
-          if (uidService.isUIDExpired(uid)) {
+          if (!uid || uidService.isUIDExpired(uid)) {
             ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期，无法撤回消息' }));
             return;
           }
@@ -294,7 +322,7 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
           }
         }
       } catch (e) {
-        console.error('[错误]', e.message);
+        console.error('[错误]', (e as Error).message);
       }
     });
 
@@ -308,7 +336,3 @@ function createConnectionHandler({ clients, broadcastOnline, uidService, dbServi
     });
   };
 }
-
-module.exports = {
-  createConnectionHandler
-};
