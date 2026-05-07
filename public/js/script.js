@@ -101,7 +101,8 @@
   }
 
   function send() {
-    const text = document.getElementById('msgInput').value.trim();
+    const el = document.getElementById('msgInput');
+    const text = el.value.trim();
     if (!text || !state.current) return;
 
     if (!wsModule.isOpen()) {
@@ -109,8 +110,17 @@
       return;
     }
 
-    wsModule.sendChatMessage(state.current, text);
-    document.getElementById('msgInput').value = '';
+    if (editingMessageId !== null) {
+      wsModule.sendEditMessage(state.current, editingMessageId, text);
+      editingMessageId = null;
+    } else {
+      wsModule.sendChatMessage(state.current, text);
+    }
+
+    el.value = '';
+    el.style.height = '';
+    el.focus();
+    updateSendButtonState();
   }
 
   function editOwnMessage(messageId) {
@@ -118,23 +128,17 @@
 
     const target = document.querySelector(`.msg[data-message-id="${messageId}"]`);
     const textEl = target ? target.querySelector('.msg-text') : null;
-    const oldText = textEl ? textEl.innerText : '';
+    if (!textEl) return;
 
-    const content = prompt('编辑消息内容：', oldText);
-    if (content === null) return;
+    const msgInput = document.getElementById('msgInput');
+    msgInput.value = textEl.innerText;
+    editingMessageId = messageId;
 
-    const trimmed = content.trim();
-    if (!trimmed) {
-      alert('消息内容不能为空');
-      return;
-    }
+    autoResizeTextarea();
+    updateSendButtonState();
 
-    if (!wsModule.isOpen()) {
-      alert('连接未就绪，请稍后重试');
-      return;
-    }
-
-    wsModule.sendEditMessage(state.current, messageId, trimmed);
+    msgInput.focus();
+    msgInput.selectionStart = msgInput.selectionEnd = msgInput.value.length;
   }
 
   function recallOwnMessage(messageId) {
@@ -348,6 +352,10 @@
   };
   global.backToSessions = backToSessions;
 
+  let updateSendButtonState;
+  let autoResizeTextarea;
+  let editingMessageId = null;
+
   window.onload = () => {
     updateConnectionStatusUI();
     uidModule.initID(state, () => uidModule.updateUIDDisplay(state));
@@ -356,10 +364,93 @@
     render();
 
     document.getElementById('sendRequestBtn').onclick = sendRequest;
-    document.querySelector('.send').onclick = send;
-    document.getElementById('msgInput').onkeydown = e => {
-      if (e.key === 'Enter') send();
+
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.querySelector('.send');
+    sendBtn.onclick = send;
+
+    let isComposing = false;
+    msgInput.addEventListener('compositionstart', () => { isComposing = true; });
+    msgInput.addEventListener('compositionend', () => { isComposing = false; });
+
+    autoResizeTextarea = () => {
+      const style = getComputedStyle(msgInput);
+      const lineHeight = parseFloat(style.lineHeight);
+      const paddingTop = parseFloat(style.paddingTop);
+      const paddingBottom = parseFloat(style.paddingBottom);
+      const borderTop = parseFloat(style.borderTopWidth);
+      const borderBottom = parseFloat(style.borderBottomWidth);
+      const maxH = lineHeight * 3 + paddingTop + paddingBottom + borderTop + borderBottom;
+
+      msgInput.style.height = 'auto';
+      msgInput.style.height = Math.min(msgInput.scrollHeight, maxH) + 'px';
+      msgInput.style.overflowY = msgInput.scrollHeight > maxH ? 'auto' : 'hidden';
     };
+
+    updateSendButtonState = () => {
+      const hasContent = msgInput.value.trim().length > 0;
+      sendBtn.disabled = !hasContent;
+      sendBtn.title = hasContent ? '' : '不能发送空消息';
+    };
+
+    const insertNewline = () => {
+      const start = msgInput.selectionStart;
+      const end = msgInput.selectionEnd;
+      const val = msgInput.value;
+      msgInput.value = val.substring(0, start) + '\n' + val.substring(end);
+      msgInput.selectionStart = msgInput.selectionEnd = start + 1;
+      autoResizeTextarea();
+      updateSendButtonState();
+    };
+
+    msgInput.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && editingMessageId !== null) {
+        e.preventDefault();
+        editingMessageId = null;
+        msgInput.value = '';
+        msgInput.style.height = '';
+        autoResizeTextarea();
+        updateSendButtonState();
+        return;
+      }
+
+      if (e.key !== 'Enter') return;
+      if (isComposing) return;
+
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        insertNewline();
+        return;
+      }
+
+      // 移动端：Enter 仅换行，不发送
+      if (window.innerWidth <= 768) {
+        e.preventDefault();
+        insertNewline();
+        return;
+      }
+
+      // 桌面端：Enter 发送
+      e.preventDefault();
+      if (msgInput.value.trim().length > 0) {
+        send();
+      }
+    });
+
+    msgInput.addEventListener('paste', () => {
+      setTimeout(() => {
+        msgInput.selectionStart = msgInput.selectionEnd = msgInput.value.length;
+        autoResizeTextarea();
+        updateSendButtonState();
+      }, 0);
+    });
+
+    msgInput.addEventListener('input', () => {
+      autoResizeTextarea();
+      updateSendButtonState();
+    });
+
+    updateSendButtonState();
 
     document.querySelector('.input-bar').style.display = 'none';
 

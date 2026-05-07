@@ -140,3 +140,4 @@ vite.config.ts.timestamp-*
 
 /db
 备忘.txt
+/.claude

@@ -329,6 +329,7 @@ button:hover {
 .input-bar {
   padding: 15px;
   display: flex;
+  align-items: center;
   gap: 10px;
   background: #ffffff;
   border-top: 1px solid #e2e8f0;
@@ -336,16 +337,33 @@ button:hover {
 
 #msgInput {
   flex: 1;
-  padding: 12px 16px;
-  border-radius: 24px;
+  padding: 10px 16px;
+  border-radius: 20px;
   border: 1px solid #e2e8f0;
   outline: none;
   font-size: 14px;
+  line-height: 1.4;
   background: #f8fafc;
+  resize: none;
+  overflow-y: hidden;
+  min-height: 42px;
+  max-height: calc(1.4em * 3 + 20px);
+  font-family: inherit;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 #msgInput:focus {
   border-color: #3b82f6;
+}
+
+#msgInput::-webkit-scrollbar {
+  width: 4px;
+}
+
+#msgInput::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
 }
 
 .send {
@@ -368,6 +386,16 @@ button:hover {
 
 .send i {
   font-size: 16px;
+}
+
+.send:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.send:disabled:hover {
+  background: #94a3b8;
 }
 
 /* 右键菜单样式 */
