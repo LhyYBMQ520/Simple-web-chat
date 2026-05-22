@@ -83,10 +83,9 @@ export function createStorageService(): StorageService {
       { expiresIn: UPLOAD_URL_EXPIRY }
     );
 
-    const needsBucketPath = publicUrl && (
-      publicUrl.includes('r2.dev') ||
-      !STORAGE_ENDPOINT.includes(STORAGE_BUCKET)
-    ) && !publicUrl.endsWith('/' + STORAGE_BUCKET);
+    const needsBucketPath = publicUrl
+      && publicUrl.includes('r2.dev')
+      && !publicUrl.endsWith('/' + STORAGE_BUCKET);
 
     const baseUrl = publicUrl
       ? (needsBucketPath ? `${publicUrl}/${STORAGE_BUCKET}` : publicUrl)
