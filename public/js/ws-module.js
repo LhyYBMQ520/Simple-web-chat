@@ -78,6 +78,10 @@
       return sendJSON({ type: 'recallMessage', to, messageId });
     }
 
+    function sendFileMessage(to, msgType, content) {
+      return sendJSON({ type: 'file_message', to, msgType, content });
+    }
+
     function connect() {
       notifyConnectionState('connecting');
 
@@ -172,6 +176,7 @@
       sendChatMessage,
       sendEditMessage,
       sendRecallMessage,
+      sendFileMessage,
       syncActiveChatState
     };
   }

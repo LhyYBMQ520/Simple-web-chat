@@ -13,6 +13,8 @@ export interface MessageRow {
   status: string;
   edited_at: number | null;
   read_at: number | null;
+  msg_type: string;
+  file_key: string | null;
 }
 
 export interface MessagePayload {
@@ -24,6 +26,8 @@ export interface MessagePayload {
   status: string;
   editedAt: number | null;
   readAt: number | null;
+  msgType: string;
+  fileKey: string | null;
 }
 
 export interface SessionDBService {
@@ -31,6 +35,8 @@ export interface SessionDBService {
   closeSessionDB(uid1: string, uid2: string): void;
   closeAllSessionDBs(): void;
   deleteAllSessionDBsForUID(targetUID: string): void;
+  collectFileKeysForUID(targetUID: string): string[];
+  collectOrphanedFileKeys(): string[];
   cleanupOrphanedDBFiles(): void;
   toMessagePayload(row: MessageRow): MessagePayload;
   updateMessagesReadState(sessionDB: Database.Database, readerUid: string, peerUid: string): MessagePayload[];
@@ -84,6 +90,12 @@ export function createSessionDBService(): SessionDBService {
     if (!columns.includes('read_at')) {
       db.exec('ALTER TABLE messages ADD COLUMN read_at INTEGER');
     }
+    if (!columns.includes('msg_type')) {
+      db.exec("ALTER TABLE messages ADD COLUMN msg_type TEXT DEFAULT 'text'");
+    }
+    if (!columns.includes('file_key')) {
+      db.exec('ALTER TABLE messages ADD COLUMN file_key TEXT');
+    }
 
     sessionDBCache.set(key, db);
     return db;
@@ -113,6 +125,66 @@ export function createSessionDBService(): SessionDBService {
       }
     });
     sessionDBCache.clear();
+  }
+
+  function collectOrphanedFileKeys(): string[] {
+    if (!fs.existsSync(DB_DIR)) return [];
+
+    const fileKeys: string[] = [];
+    const files = fs.readdirSync(DB_DIR);
+
+    files.forEach(file => {
+      if (!file.endsWith('.db')) return;
+      const fileName = file.replace('.db', '');
+      const [uid1, uid2] = fileName.split(',');
+      if (!uid1 || !uid2) return;
+
+      try {
+        const db = getSessionDB(uid1, uid2);
+        const rows = db.prepare(
+          "SELECT file_key FROM messages WHERE msg_type IN ('image','file') AND file_key IS NOT NULL AND status = 'recalled'"
+        ).all() as { file_key: string }[];
+
+        rows.forEach(row => {
+          if (row.file_key) fileKeys.push(row.file_key);
+        });
+      } catch (err) {
+        console.error(`[孤儿清理] 扫描数据库失败: ${file}`, (err as Error).message);
+      }
+    });
+
+    return fileKeys;
+  }
+
+  function collectFileKeysForUID(targetUID: string): string[] {
+    if (!fs.existsSync(DB_DIR)) return [];
+
+    const fileKeys: string[] = [];
+    const files = fs.readdirSync(DB_DIR);
+
+    files.forEach(file => {
+      if (!file.endsWith('.db')) return;
+
+      const fileName = file.replace('.db', '');
+      const [uid1, uid2] = fileName.split(',');
+
+      if (uid1 !== targetUID && uid2 !== targetUID) return;
+
+      try {
+        const db = getSessionDB(uid1, uid2);
+        const rows = db.prepare(
+          "SELECT file_key FROM messages WHERE msg_type IN ('image','file') AND file_key IS NOT NULL AND status != 'recalled'"
+        ).all() as { file_key: string }[];
+
+        rows.forEach(row => {
+          if (row.file_key) fileKeys.push(row.file_key);
+        });
+      } catch (err) {
+        console.error(`[文件清理] 扫描数据库失败: ${file}`, (err as Error).message);
+      }
+    });
+
+    return fileKeys;
   }
 
   function deleteAllSessionDBsForUID(targetUID: string): void {
@@ -175,7 +247,9 @@ export function createSessionDBService(): SessionDBService {
       time: row.time,
       status: row.status || 'normal',
       editedAt: row.edited_at || null,
-      readAt: row.read_at || null
+      readAt: row.read_at || null,
+      msgType: row.msg_type || 'text',
+      fileKey: row.file_key || null
     };
   }
 
@@ -261,6 +335,8 @@ export function createSessionDBService(): SessionDBService {
     closeSessionDB,
     closeAllSessionDBs,
     deleteAllSessionDBsForUID,
+    collectFileKeysForUID,
+    collectOrphanedFileKeys,
     cleanupOrphanedDBFiles,
     toMessagePayload,
     updateMessagesReadState,

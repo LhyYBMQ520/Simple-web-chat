@@ -4,8 +4,9 @@
   const messageModuleFactory = global.ChatMessageModule;
   const sessionModuleFactory = global.ChatSessionModule;
   const wsModuleFactory = global.ChatWsModule;
+  const fileUploadModuleFactory = global.ChatFileUploadModule;
 
-  if (!appStateModule || !uidModule || !messageModuleFactory || !sessionModuleFactory || !wsModuleFactory) {
+  if (!appStateModule || !uidModule || !messageModuleFactory || !sessionModuleFactory || !wsModuleFactory || !fileUploadModuleFactory) {
     throw new Error('聊天模块加载失败，请检查 js 文件加载顺序');
   }
 
@@ -15,6 +16,7 @@
   let sessionModule;
   let messageModule;
   let wsModule;
+  let fileUploadModule;
 
   function getConnectionUIModel() {
     if (state.connectionState === 'connected') {
@@ -330,6 +332,40 @@
     }
   });
 
+  fileUploadModule = fileUploadModuleFactory.createFileUploadModule({
+    state,
+    wsModule,
+    onUploadStart: function () {
+      const bar = document.getElementById('uploadProgress');
+      const barInner = document.getElementById('uploadProgressBar');
+      const barText = document.getElementById('uploadProgressText');
+      if (bar) bar.style.display = 'block';
+      if (barInner) barInner.style.width = '0%';
+      if (barText) barText.innerText = '上传中...';
+    },
+    onUploadProgress: function (pct) {
+      const barInner = document.getElementById('uploadProgressBar');
+      const barText = document.getElementById('uploadProgressText');
+      if (barInner) barInner.style.width = pct + '%';
+      if (barText) barText.innerText = '上传中 ' + pct + '%';
+    },
+    onUploadComplete: function () {
+      const bar = document.getElementById('uploadProgress');
+      if (bar) bar.style.display = 'none';
+    },
+    onUploadError: function (msg) {
+      const bar = document.getElementById('uploadProgress');
+      if (bar) bar.style.display = 'none';
+      alert('文件发送失败: ' + msg);
+    }
+  });
+
+  document.getElementById('uploadCancelBtn').onclick = function () {
+    fileUploadModule.cancelUpload();
+    var bar = document.getElementById('uploadProgress');
+    if (bar) bar.style.display = 'none';
+  };
+
   global.copyMyId = function copyMyId() {
     uidModule.copyMyId(state);
   };
@@ -451,6 +487,82 @@
     });
 
     updateSendButtonState();
+
+    document.getElementById('imageBtn').onclick = function () {
+      document.getElementById('fileInput').click();
+    };
+
+    document.getElementById('fileBtn').onclick = function () {
+      document.getElementById('docInput').click();
+    };
+
+    document.getElementById('fileInput').onchange = function () {
+      var files = this.files;
+      if (files && files.length > 0) {
+        for (var i = 0; i < files.length; i++) {
+          fileUploadModule.sendFile(files[i]);
+        }
+        this.value = '';
+      }
+    };
+
+    document.getElementById('docInput').onchange = function () {
+      var files = this.files;
+      if (files && files.length > 0) {
+        fileUploadModule.sendFile(files[0]);
+        this.value = '';
+      }
+    };
+
+    msgInput.addEventListener('paste', function (e) {
+      var items = (e.clipboardData || window.clipboardData).items;
+      if (!items) return;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          e.preventDefault();
+          var blob = items[i].getAsFile();
+          if (blob) {
+            if (!blob.name) {
+              blob = new File([blob], 'paste-' + Date.now() + '.png', { type: blob.type });
+            }
+            fileUploadModule.sendPastedImage(blob);
+          }
+          break;
+        }
+      }
+    });
+
+    var msgBox = document.getElementById('msgBox');
+    msgBox.addEventListener('dragover', function (e) { e.preventDefault(); });
+    msgBox.addEventListener('drop', function (e) {
+      e.preventDefault();
+      var files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        for (var i = 0; i < files.length; i++) {
+          fileUploadModule.sendFile(files[i]);
+        }
+      }
+    });
+
+    var lightbox = document.getElementById('lightbox');
+    if (lightbox) {
+      lightbox.onclick = function (e) {
+        if (e.target === lightbox || e.target.className === 'lightbox-close') {
+          lightbox.style.display = 'none';
+          document.getElementById('lightboxImg').src = '';
+        }
+      };
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        var lb = document.getElementById('lightbox');
+        if (lb && lb.style.display !== 'none') {
+          lb.style.display = 'none';
+          document.getElementById('lightboxImg').src = '';
+        }
+      }
+    });
 
     document.querySelector('.input-bar').style.display = 'none';
 

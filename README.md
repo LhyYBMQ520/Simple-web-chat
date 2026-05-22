@@ -18,6 +18,7 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天应用。用�
 - **✏️ 消息编辑与撤回**：点击编辑按钮一键回填至输入框，修改后发送即可更新消息；或撤回为系统提示态
 - **⌨️ 多行输入框**：支持桌面 Enter 发送 / 移动端 Enter 换行，Ctrl或Shift / Cmd+Enter 手动换行，粘贴文本完整保留原始换行格式，自动高度适配最多 3 行，随后使用滚动条调整上下
 - **✅ 消息已读状态**：每条消息在时间小字旁显示已读/未读状态，阅读状态可实时同步
+- **🖼️ 图片与文件传输**：支持发送图片（点击灯箱放大预览）和文件，通过 Cloudflare R2 对象存储直传，不占用 VPS 带宽和磁盘
 - **📶 连接状态与延迟**：会话列表标题右侧实时显示与服务器连接状态及网络延迟
 - **📱 响应式设计**：完美支持桌面端和移动端的屏幕比例（尽量吧。。。移动端的不确定性太多了）
 - **⚙️ 零配置**：开箱即用，无需复杂配置
@@ -35,7 +36,10 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天应用。用�
 ```json
 {
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1045.0",
+    "@aws-sdk/s3-request-presigner": "^3.1045.0",
     "better-sqlite3": "^12.8.0",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ws": "^8.20.0"
   },
@@ -76,9 +80,53 @@ cd Simple-web-chat
 pnpm install
 ```
 
+**3. 配置文件传输（可选，需要文件/图片功能时配置）**
+
+项目使用 Cloudflare R2 作为对象存储（也兼容 S3/MinIO/OSS）。复制并编辑配置文件：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 填入你的 R2 凭据：
+
+```env
+STORAGE_PROVIDER=r2
+STORAGE_ENDPOINT=https://<your-account-id>.r2.cloudflarestorage.com
+STORAGE_BUCKET=chat-files
+STORAGE_ACCESS_KEY=<your-access-key>
+STORAGE_SECRET_KEY=<your-secret-key>
+STORAGE_PUBLIC_URL=https://cdn.yourdomain.com  # 必须绑定自定义域名，R2 默认 r2.dev 域名有速率限制不宜生产使用
+STORAGE_REGION=auto
+MAX_FILE_SIZE=10485760
+UPLOAD_URL_EXPIRY=300
+```
+
+> **获取 R2 凭据**：Cloudflare 控制台 → R2 → 创建存储桶 → 管理 API 令牌。Access Key 和 Secret Key 在 API 令牌页面获取。
+
+配置完成后，还需在 R2 控制台完成以下两项设置（否则文件上传和下载都会失败）：
+
+**① 开启公开访问**：存储桶 → Settings → Public Access → 打开 Allow Public Access
+
+**② 配置 CORS 策略**：存储桶 → Settings → CORS Policy → Add CORS Policy → 切换到 **JSON** 标签页，粘贴：
+```json
+[
+  {
+    "AllowedOrigins": ["http://localhost:21451"],
+    "AllowedMethods": ["GET", "PUT"],
+    "AllowedHeaders": ["Content-Type", "Content-Disposition"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+> R2 CORS 策略必须使用 JSON 格式，且 `AllowedOrigins` 需要精确匹配访问来源（R2 不支持 `*` 通配符）。本地开发填 `http://localhost:21451`，部署后改为你的实际域名。
+
+若不配置对象存储，纯文本聊天功能不受影响。
+
 ---
 
-### 开发模式（推荐日常使用）
+### 开发模式
 
 `tsx` 直接运行 TypeScript 源码，无需预编译，修改代码后重启即可生效：
 
@@ -164,7 +212,8 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 
 ```
 Simple-web-chat/
-├── server.ts                 # 后端主入口（服务启动与模块装配）
+├── server.ts                 # 后端主入口（Express + WebSocket + 文件上传端点）
+├── .env.example             # 对象存储配置模板
 ├── tsconfig.json            # TypeScript 编译配置
 ├── package.json             # 项目配置文件
 ├── README.md                # 项目说明文档
@@ -172,20 +221,24 @@ Simple-web-chat/
 ├── db/                      # 会话数据库存储文件夹（自动生成）
 ├── src/                     # 后端模块目录
 │   ├── config/
-│   │   └── constants.ts     # 后端常量配置
+│   │   └── constants.ts     # 后端常量配置（含 dotenv 加载）
 │   ├── services/
 │   │   ├── session-db-service.ts  # 会话数据库与消息持久化服务
-│   │   └── uid-service.ts   # UID 生命周期服务
+│   │   ├── uid-service.ts   # UID 生命周期服务
+│   │   └── storage-service.ts    # 对象存储服务（R2/S3 预签名 URL）
 │   └── ws/
 │       └── connection-handler.ts   # WebSocket 消息处理器
 └── public/                  # 前端静态资源
     ├── index.html          # 主页 HTML
     ├── css/
-    │   └── style.css       # 样式文件
+    │   │   └── style.css       # 样式文件（含图片/文件/灯箱）
     ├── js/
    │   ├── app-state.js    # 前端状态模块
    │   ├── uid-module.js   # UID 与复制功能模块
-   │   ├── message-module.js  # 消息渲染与状态模块
+   │   │   ├── message-module.js  # 消息渲染（text/image/file）
+│   │   ├── session-module.js  # 会话与备注管理模块
+│   │   ├── ws-module.js    # WebSocket 通信与延迟检测模块
+│   │   ├── file-upload-module.js  # 文件上传（预签名 + 直传）
    │   ├── session-module.js  # 会话与备注管理模块
    │   ├── ws-module.js    # WebSocket 通信与延迟检测模块
    │   └── script.js       # 前端入口与模块装配
@@ -239,8 +292,29 @@ Simple-web-chat/
 | status | TEXT | 消息状态（`normal` / `recalled`） |
 | edited_at | INTEGER | 编辑时间戳（未编辑为 `NULL`） |
 | read_at | INTEGER | 已读时间戳（未读为 `NULL`） |
+| msg_type | TEXT | 消息类型（`text` / `image` / `file`） |
 
 ## 🌐 网络协议
+
+### 文件上传流程
+
+文件采用**预签名 URL 直传**方式，不经过 VPS：
+
+1. 客户端 `POST /api/upload/presign` 获取预签名上传 URL
+2. 客户端 `PUT` 文件到对象存储（直传 R2）
+3. 客户端发送 `file_message` WebSocket 消息通知接收方
+
+```javascript
+// 请求预签名 URL
+POST /api/upload/presign
+{ fileName: "photo.jpg", contentType: "image/jpeg" }
+
+// 响应
+{ uploadUrl: "https://...", publicUrl: "https://...", fileKey: "chat/2026/05/10/..." }
+
+// 文件消息（通过 WebSocket 发送）
+{ type: "file_message", to: "peerUID", msgType: "image", content: { name, size, url, fileKey } }
+```
 
 ### WebSocket 消息格式
 
@@ -299,7 +373,7 @@ Simple-web-chat/
 ## 📅 未来计划
 
 - [ ] 添加端到端加密与隐私保护功能（我也要死吗.png）
-- [ ] 支持文件和图片传输
+- [x] 支持文件和图片传输（Cloudflare R2 对象存储）
 - [ ] 实现群组聊天功能
 - [ ] 添加消息搜索与过滤
 - [ ] 实现对方状态显示（如输入中。。。）

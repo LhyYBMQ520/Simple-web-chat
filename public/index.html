@@ -37,10 +37,28 @@
       </div>
       <div class="messages" id="msgBox"></div>
       <div class="input-bar">
+        <input type="file" id="fileInput" accept="image/*" style="display:none" multiple>
+        <input type="file" id="docInput" style="display:none">
+        <button class="attach-btn" id="imageBtn" title="发送图片">
+          <i class="fa-solid fa-image"></i>
+        </button>
+        <button class="attach-btn" id="fileBtn" title="发送文件">
+          <i class="fa-solid fa-paperclip"></i>
+        </button>
         <textarea id="msgInput" placeholder="输入消息" rows="1"></textarea>
         <button class="send">
           <i class="fa-solid fa-paper-plane"></i>
         </button>
+      </div>
+      <!-- 上传进度条 -->
+      <div class="upload-progress" id="uploadProgress" style="display:none">
+        <div class="upload-progress-bar" id="uploadProgressBar"></div>
+        <div class="upload-progress-row">
+          <span class="upload-progress-text" id="uploadProgressText"></span>
+          <button class="upload-cancel-btn" id="uploadCancelBtn" title="取消上传">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -57,11 +75,18 @@
     </div>
   </div>
 
+  <!-- 图片灯箱 -->
+  <div id="lightbox" class="lightbox" style="display:none">
+    <span class="lightbox-close">&times;</span>
+    <img id="lightboxImg" src="" alt="预览图片">
+  </div>
+
   <script src="js/app-state.js"></script>
   <script src="js/uid-module.js"></script>
   <script src="js/message-module.js"></script>
   <script src="js/session-module.js"></script>
   <script src="js/ws-module.js"></script>
+  <script src="js/file-upload-module.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>

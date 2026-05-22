@@ -402,6 +402,261 @@ button:hover {
   background: #94a3b8;
 }
 
+/* 附件按钮 */
+.attach-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s;
+  margin-top: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.attach-btn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+/* 上传进度条 */
+.upload-progress {
+  padding: 0 15px 8px;
+  background: #ffffff;
+}
+
+.upload-progress-bar {
+  height: 4px;
+  background: #3b82f6;
+  border-radius: 2px;
+  transition: width 0.2s;
+  width: 0%;
+}
+
+.upload-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.upload-progress-text {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.upload-cancel-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  font-size: 11px;
+  transition: 0.15s;
+}
+
+.upload-cancel-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* 图片消息 */
+.msg.msg-image {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  max-width: 65%;
+  gap: 2px;
+}
+
+.msg-image-wrapper {
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.msg-img {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: block;
+  transition: transform 0.2s;
+}
+
+.msg-img:hover {
+  transform: scale(1.02);
+}
+
+.msg-img-name {
+  font-size: 11px;
+  padding: 0 4px;
+  opacity: 0.7;
+  word-break: break-all;
+}
+
+.msg-image-fallback {
+  width: 200px;
+  height: 120px;
+  background: #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.msg-image-fallback i {
+  font-size: 28px;
+}
+
+.msg.msg-image .msg-meta {
+  padding: 2px 8px;
+}
+
+.msg.msg-image.me .msg-meta {
+  align-self: flex-end;
+  color: #64748b;
+}
+
+.msg.msg-image.other .msg-meta {
+  align-self: flex-start;
+  color: #64748b;
+}
+
+/* 图片消息的操作按钮 */
+.msg.msg-image .msg-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  gap: 4px;
+}
+
+.msg.msg-image .msg-action-btn {
+  width: 22px;
+  height: 22px;
+  background: rgba(0,0,0,0.4);
+  font-size: 10px;
+}
+
+.msg.msg-image .msg-action-btn:hover {
+  background: rgba(0,0,0,0.6);
+}
+
+/* 文件消息卡片 */
+.msg-file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(0,0,0,0.06);
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.2s;
+}
+
+.msg.me .msg-file-card {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+
+.msg-file-card:hover {
+  background: rgba(0,0,0,0.1);
+}
+
+.msg.me .msg-file-card:hover {
+  background: rgba(255,255,255,0.25);
+}
+
+.msg-file-card > .fa-file {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.msg-file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.msg-file-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-file-size {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.msg-file-download {
+  flex-shrink: 0;
+  font-size: 16px;
+  opacity: 0.6;
+}
+
+/* 灯箱 */
+.lightbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 8px;
+  object-fit: contain;
+  cursor: default;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 30px;
+  color: #fff;
+  font-size: 36px;
+  font-weight: 300;
+  cursor: pointer;
+  z-index: 10;
+  line-height: 1;
+}
+
+.lightbox-close:hover {
+  color: #ccc;
+}
+
 /* 右键菜单样式 */
 .context-menu {
   position: fixed;

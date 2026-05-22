@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import 'dotenv/config';
 
 function findProjectRoot(dir: string): string {
   let current = dir;
@@ -20,3 +21,13 @@ export const UID_LIFETIME = 24 * 60 * 60 * 1000;
 export const PORT = 21451;
 export const DB_DIR = path.join(PROJECT_ROOT, 'db');
 export const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
+
+export const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'r2';
+export const STORAGE_ENDPOINT = process.env.STORAGE_ENDPOINT || '';
+export const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'chat-files';
+export const STORAGE_ACCESS_KEY = process.env.STORAGE_ACCESS_KEY || '';
+export const STORAGE_SECRET_KEY = process.env.STORAGE_SECRET_KEY || '';
+export const STORAGE_PUBLIC_URL = process.env.STORAGE_PUBLIC_URL || '';
+export const STORAGE_REGION = process.env.STORAGE_REGION || 'auto';
+export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10);
+export const UPLOAD_URL_EXPIRY = parseInt(process.env.UPLOAD_URL_EXPIRY || '300', 10);

@@ -47,6 +47,9 @@
       const parsedReadAt = Number(readAtRaw);
       const readAt = Number.isFinite(parsedReadAt) && parsedReadAt > 0 ? parsedReadAt : null;
 
+      const msgType = raw.msgType || 'text';
+      const fileKey = raw.fileKey || null;
+
       return {
         id,
         sender,
@@ -55,7 +58,9 @@
         time,
         status,
         editedAt,
-        readAt
+        readAt,
+        msgType,
+        fileKey
       };
     }
 
@@ -63,9 +68,25 @@
       return message.sender === state.myId ? message.receiver : message.sender;
     }
 
+    function parseFileContent(message) {
+      if (message.msgType === 'text') return null;
+      try {
+        return JSON.parse(message.content);
+      } catch (e) {
+        return null;
+      }
+    }
+
     function getMessageDisplayText(message) {
       if (message.status === messageStatus.RECALLED) {
         return message.sender === state.myId ? '你撤回了一条消息' : '对方撤回了一条消息';
+      }
+      if (message.msgType === 'image') {
+        return '[图片]';
+      }
+      if (message.msgType === 'file') {
+        const file = parseFileContent(message);
+        return file ? `[文件] ${file.name}` : '[文件]';
       }
       return message.content;
     }
@@ -91,19 +112,26 @@
       return message.sender === state.myId && message.status !== messageStatus.RECALLED && message.id !== null;
     }
 
+    function canEditMessage(message) {
+      return canOperateMessage(message) && message.msgType === 'text';
+    }
+
     function createMessageActions(message) {
       const actions = document.createElement('div');
       actions.className = 'msg-actions';
 
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = 'msg-action-btn';
-      editBtn.title = '编辑消息';
-      editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
-      editBtn.onclick = event => {
-        event.stopPropagation();
-        onEditMessage(message.id);
-      };
+      if (canEditMessage(message)) {
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'msg-action-btn';
+        editBtn.title = '编辑消息';
+        editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+        editBtn.onclick = event => {
+          event.stopPropagation();
+          onEditMessage(message.id);
+        };
+        actions.appendChild(editBtn);
+      }
 
       const recallBtn = document.createElement('button');
       recallBtn.type = 'button';
@@ -114,14 +142,13 @@
         event.stopPropagation();
         onRecallMessage(message.id);
       };
-
-      actions.appendChild(editBtn);
       actions.appendChild(recallBtn);
+
       return actions;
     }
 
     function applyMessageToElement(el, message) {
-      el.classList.remove('me', 'other', 'recalled');
+      el.classList.remove('me', 'other', 'recalled', 'msg-image', 'msg-file');
       el.classList.add(message.sender === state.myId ? 'me' : 'other');
       if (message.status === messageStatus.RECALLED) {
         el.classList.add('recalled');
@@ -134,13 +161,85 @@
       el.dataset.sender = message.sender;
       el.dataset.receiver = message.receiver;
 
-      let textEl = el.querySelector('.msg-text');
-      if (!textEl) {
-        textEl = document.createElement('div');
+      // 清除旧内容
+      el.querySelector('.msg-text')?.remove();
+      el.querySelector('.msg-image-wrapper')?.remove();
+      el.querySelector('.msg-img-name')?.remove();
+      el.querySelector('.msg-file-card')?.remove();
+      el.querySelector('.msg-actions')?.remove();
+
+      const isRecalled = message.status === messageStatus.RECALLED;
+
+      if (isRecalled) {
+        const textEl = document.createElement('div');
         textEl.className = 'msg-text';
+        textEl.innerText = getMessageDisplayText(message);
+        el.appendChild(textEl);
+      } else if (message.msgType === 'image') {
+        el.classList.add('msg-image');
+        const file = parseFileContent(message);
+        const imgWrapper = document.createElement('div');
+        imgWrapper.className = 'msg-image-wrapper';
+
+        const img = document.createElement('img');
+        img.className = 'msg-img';
+        img.src = file ? file.url : '';
+        img.alt = file ? file.name : '图片';
+        img.title = file ? file.name : '';
+        img.loading = 'lazy';
+        img.onclick = function () {
+          const lb = document.getElementById('lightbox');
+          const lbImg = document.getElementById('lightboxImg');
+          if (lb && lbImg) {
+            lbImg.src = img.src;
+            lb.style.display = 'flex';
+          }
+        };
+        img.onerror = function () {
+          console.error('[图片加载失败] URL:', img.src);
+          img.style.display = 'none';
+          const fallback = document.createElement('div');
+          fallback.className = 'msg-image-fallback';
+          fallback.innerHTML = '<i class="fa-solid fa-image"></i><span>图片加载失败</span>';
+          imgWrapper.appendChild(fallback);
+        };
+
+        imgWrapper.appendChild(img);
+        el.appendChild(imgWrapper);
+
+        if (file && file.name) {
+          const nameEl = document.createElement('div');
+          nameEl.className = 'msg-img-name';
+          nameEl.innerText = file.name;
+          el.appendChild(nameEl);
+        }
+      } else if (message.msgType === 'file') {
+        el.classList.add('msg-file');
+        const file = parseFileContent(message);
+        const card = document.createElement('a');
+        card.className = 'msg-file-card';
+        card.href = file ? file.url : '#';
+        card.target = '_blank';
+        card.rel = 'noopener';
+        card.download = file ? file.name : '';
+
+        const sizeText = file && file.size ? formatFileSize(file.size) : '';
+        card.innerHTML =
+          '<i class="fa-solid fa-file"></i>' +
+          '<div class="msg-file-info">' +
+            '<span class="msg-file-name">' + (file ? escapeHtml(file.name) : '未知文件') + '</span>' +
+            (sizeText ? '<span class="msg-file-size">' + sizeText + '</span>' : '') +
+          '</div>' +
+          '<i class="fa-solid fa-download msg-file-download"></i>';
+
+        el.appendChild(card);
+      } else {
+        el.classList.add('msg-text-only');
+        const textEl = document.createElement('div');
+        textEl.className = 'msg-text';
+        textEl.innerText = getMessageDisplayText(message);
         el.appendChild(textEl);
       }
-      textEl.innerText = getMessageDisplayText(message);
 
       let metaEl = el.querySelector('.msg-meta');
       if (!metaEl) {
@@ -152,12 +251,22 @@
       metaEl.innerText = metaText;
       metaEl.style.display = metaText ? '' : 'none';
 
-      const oldActions = el.querySelector('.msg-actions');
-      if (oldActions) oldActions.remove();
-
       if (canOperateMessage(message)) {
         el.appendChild(createMessageActions(message));
       }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
     }
 
     function createMessageElement(message) {

@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { UIDService } from '../services/uid-service.js';
 import type { SessionDBService } from '../services/session-db-service.js';
+import type { StorageService } from '../services/storage-service.js';
 
 export interface ClientInfo {
   ws: WebSocket;
@@ -15,6 +16,7 @@ export interface ConnectionHandlerDeps {
   broadcastOnline: () => void;
   uidService: UIDService;
   dbService: SessionDBService;
+  storageService: StorageService;
 }
 
 type WSMessage =
@@ -25,10 +27,11 @@ type WSMessage =
   | { type: 'getHistory'; with: string }
   | { type: 'activeChat'; with?: string }
   | { type: 'message'; to: string; content: unknown }
+  | { type: 'file_message'; to: string; msgType: unknown; content: unknown }
   | { type: 'editMessage'; messageId: unknown; to: string; content: unknown }
   | { type: 'recallMessage'; messageId: unknown; to: string };
 
-export function createConnectionHandler({ clients, broadcastOnline, uidService, dbService }: ConnectionHandlerDeps) {
+export function createConnectionHandler({ clients, broadcastOnline, uidService, dbService, storageService }: ConnectionHandlerDeps) {
   return (ws: WebSocket, req: IncomingMessage): void => {
     let uid: string | undefined;
 
@@ -179,8 +182,8 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
           );
           const readAt = receiverIsActive ? now : null;
 
-          const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at) VALUES (?,?,?,?,?,?,?)');
-          const result = insert.run(uid, msg.to, content, now, 'normal', null, readAt);
+          const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type) VALUES (?,?,?,?,?,?,?,?)');
+          const result = insert.run(uid, msg.to, content, now, 'normal', null, readAt, 'text');
 
           const messagePayload = {
             id: Number(result.lastInsertRowid),
@@ -190,7 +193,70 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             time: now,
             status: 'normal',
             editedAt: null,
-            readAt
+            readAt,
+            msgType: 'text'
+          };
+
+          ws.send(JSON.stringify({ type: 'msg', message: messagePayload }));
+
+          if (target && !uidService.isUIDExpired(msg.to) && target.ws.readyState === WebSocket.OPEN) {
+            target.ws.send(JSON.stringify({ type: 'msg', message: messagePayload }));
+          }
+        }
+
+        if (msg.type === 'file_message') {
+          if (!uid || uidService.isUIDExpired(uid)) {
+            ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期，无法发送消息' }));
+            return;
+          }
+
+          if (!msg.to) {
+            ws.send(JSON.stringify({ type: 'error', message: '接收方不能为空' }));
+            return;
+          }
+
+          const msgType = String(msg.msgType || 'file');
+          if (msgType !== 'image' && msgType !== 'file') {
+            ws.send(JSON.stringify({ type: 'error', message: '不支持的消息类型' }));
+            return;
+          }
+
+          if (typeof msg.content !== 'object' || msg.content === null || typeof (msg.content as Record<string, unknown>).url !== 'string') {
+            ws.send(JSON.stringify({ type: 'error', message: '文件消息格式错误' }));
+            return;
+          }
+
+          const contentStr = JSON.stringify(msg.content);
+          console.log(`[文件消息] ${uid} -> ${msg.to} : ${msgType} | ${(msg.content as Record<string, string>).name || 'unknown'}`);
+
+          const sessionDB = dbService.getSessionDB(uid, msg.to);
+          const now = Date.now();
+          const target = clients.get(msg.to);
+          const receiverIsActive = !!(
+            target &&
+            !uidService.isUIDExpired(msg.to) &&
+            target.ws.readyState === WebSocket.OPEN &&
+            target.activeChat === uid
+          );
+          const readAt = receiverIsActive ? now : null;
+
+          const fileKey = typeof (msg.content as Record<string, unknown>).fileKey === 'string'
+            ? (msg.content as Record<string, string>).fileKey : null;
+
+          const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type,file_key) VALUES (?,?,?,?,?,?,?,?,?)');
+          const result = insert.run(uid, msg.to, contentStr, now, 'normal', null, readAt, msgType, fileKey);
+
+          const messagePayload = {
+            id: Number(result.lastInsertRowid),
+            sender: uid,
+            receiver: msg.to,
+            content: contentStr,
+            time: now,
+            status: 'normal',
+            editedAt: null,
+            readAt,
+            msgType,
+            fileKey
           };
 
           ws.send(JSON.stringify({ type: 'msg', message: messagePayload }));
@@ -296,6 +362,13 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
           if ((row.status || 'normal') !== 'recalled') {
             const update = sessionDB.prepare("UPDATE messages SET content='[消息已撤回]', status='recalled', edited_at=NULL WHERE id=?");
             update.run(messageId);
+
+            if ((row.msg_type === 'image' || row.msg_type === 'file') && row.file_key && storageService.isConfigured()) {
+              storageService.deleteFile(row.file_key).catch(err =>
+                console.error('[消息撤回] 删除 R2 文件失败:', row.file_key, (err as Error).message)
+              );
+              console.log(`[消息撤回] 已请求删除 R2 文件: ${row.file_key}`);
+            }
           }
 
           const recalledPayload = dbService.toMessagePayload({
