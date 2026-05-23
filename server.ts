@@ -12,6 +12,13 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 app.use(express.json());
+
+// 向前端注入服务端配置
+app.get('/js/config.js', (_req, res) => {
+  res.type('application/javascript');
+  res.send(`window.__CHAT_CONFIG__ = { maxFileSize: ${MAX_FILE_SIZE} };`);
+});
+
 app.use(express.static(PUBLIC_DIR));
 
 const clients = new Map<string, ClientInfo>();
@@ -40,9 +47,16 @@ app.post('/api/upload/presign', async (req, res) => {
       return;
     }
 
-    const { fileName, contentType } = req.body;
+    const { fileName, contentType, fileSize } = req.body;
     if (!fileName || !contentType) {
       res.status(400).json({ error: '缺少 fileName 或 contentType' });
+      return;
+    }
+
+    if (fileSize && fileSize > MAX_FILE_SIZE) {
+      const limitMB = (MAX_FILE_SIZE / 1048576).toFixed(0);
+      const fileMB = (fileSize / 1048576).toFixed(2);
+      res.status(413).json({ error: `文件大小 ${fileMB}MB 超出限制 ${limitMB}MB` });
       return;
     }
 

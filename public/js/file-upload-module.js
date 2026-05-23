@@ -7,11 +7,11 @@
       return /^image\/(jpeg|png|gif|webp|svg\+xml)$/.test(contentType);
     }
 
-    async function getPresignedUrl(fileName, contentType) {
+    async function getPresignedUrl(fileName, contentType, fileSize) {
       const resp = await fetch('/api/upload/presign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName, contentType })
+        body: JSON.stringify({ fileName, contentType, fileSize })
       });
 
       if (!resp.ok) {
@@ -80,10 +80,18 @@
         return;
       }
 
+      var maxSize = (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.maxFileSize) || 104857600;
+      if (file.size > maxSize) {
+        var limitMB = (maxSize / 1048576).toFixed(0);
+        var fileMB = (file.size / 1048576).toFixed(2);
+        alert('文件大小 ' + fileMB + 'MB 超出限制 ' + limitMB + 'MB');
+        return;
+      }
+
       if (typeof onUploadStart === 'function') onUploadStart();
 
       try {
-        const presigned = await getPresignedUrl(file.name, file.type);
+        const presigned = await getPresignedUrl(file.name, file.type, file.size);
         await uploadToStorage(presigned.uploadUrl, file, file.type, presigned.headers);
 
         const msgType = isImageType(file.type) ? 'image' : 'file';
@@ -109,8 +117,16 @@
 
       if (!wsModule.isOpen()) return;
 
+      var maxSize = (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.maxFileSize) || 104857600;
+      if (file.size > maxSize) {
+        var limitMB = (maxSize / 1048576).toFixed(0);
+        var fileMB = (file.size / 1048576).toFixed(2);
+        alert('图片大小 ' + fileMB + 'MB 超出限制 ' + limitMB + 'MB');
+        return;
+      }
+
       try {
-        const presigned = await getPresignedUrl(file.name || 'paste.png', file.type);
+        const presigned = await getPresignedUrl(file.name || 'paste.png', file.type, file.size);
         await uploadToStorage(presigned.uploadUrl, file, file.type, presigned.headers);
         wsModule.sendFileMessage(state.current, 'image', {
           name: file.name || 'paste.png',

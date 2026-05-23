@@ -96,7 +96,7 @@ STORAGE_ENDPOINT=https://<your-account-id>.r2.cloudflarestorage.com
 STORAGE_BUCKET=chat-files
 STORAGE_ACCESS_KEY=<your-access-key>
 STORAGE_SECRET_KEY=<your-secret-key>
-STORAGE_PUBLIC_URL=https://cdn.yourdomain.com  # 必须绑定自定义域名，R2 默认 r2.dev 域名有速率限制不宜生产使用
+STORAGE_PUBLIC_URL=https://cdn.yourdomain.com  # 自定义域名需绑定到存储桶；若未绑定需手动在地址后追加桶名（如 /chat-files）
 STORAGE_REGION=auto
 MAX_FILE_SIZE=10485760
 UPLOAD_URL_EXPIRY=300
@@ -212,7 +212,7 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 
 ```
 Simple-web-chat/
-├── server.ts                 # 后端主入口（Express + WebSocket + 文件上传端点）
+├── server.ts                 # 后端主入口（Express + WebSocket + 文件上传端点 + 动态配置注入 /js/config.js）
 ├── .env.example             # 对象存储配置模板
 ├── tsconfig.json            # TypeScript 编译配置
 ├── package.json             # 项目配置文件
@@ -238,7 +238,7 @@ Simple-web-chat/
    │   │   ├── message-module.js  # 消息渲染（text/image/file）
 │   │   ├── session-module.js  # 会话与备注管理模块
 │   │   ├── ws-module.js    # WebSocket 通信与延迟检测模块
-│   │   ├── file-upload-module.js  # 文件上传（预签名 + 直传）
+│   │   ├── file-upload-module.js  # 文件上传（预签名 + 直传 + 大小校验）
    │   ├── session-module.js  # 会话与备注管理模块
    │   ├── ws-module.js    # WebSocket 通信与延迟检测模块
    │   └── script.js       # 前端入口与模块装配
@@ -305,9 +305,9 @@ Simple-web-chat/
 3. 客户端发送 `file_message` WebSocket 消息通知接收方
 
 ```javascript
-// 请求预签名 URL
+// 请求预签名 URL（前端会先检查 file.size 是否超限，超限直接拦截）
 POST /api/upload/presign
-{ fileName: "photo.jpg", contentType: "image/jpeg" }
+{ fileName: "photo.jpg", contentType: "image/jpeg", fileSize: 1024000 }
 
 // 响应
 { uploadUrl: "https://...", publicUrl: "https://...", fileKey: "chat/2026/05/10/..." }
