@@ -28,18 +28,6 @@ const storageService = createStorageService();
 
 dbService.cleanupOrphanedDBFiles();
 
-if (storageService.isConfigured()) {
-  const orphanedKeys = dbService.collectOrphanedFileKeys();
-  if (orphanedKeys.length > 0) {
-    console.log(`[启动清理] 发现 ${orphanedKeys.length} 个孤儿文件（已撤回但未清理），开始删除...`);
-    orphanedKeys.forEach(key => {
-      storageService.deleteFile(key).catch(err =>
-        console.error(`[启动清理] 删除孤儿文件失败: ${key}`, (err as Error).message)
-      );
-    });
-  }
-}
-
 app.post('/api/upload/presign', async (req, res) => {
   try {
     if (!storageService.isConfigured()) {
@@ -104,17 +92,6 @@ wss.on('connection', createConnectionHandler({
 
 const cleanupTimer = setInterval(() => {
   uidService.cleanupExpiredUIDs((uid) => {
-    if (storageService.isConfigured()) {
-      const fileKeys = dbService.collectFileKeysForUID(uid);
-      if (fileKeys.length > 0) {
-        console.log(`[文件清理] UID ${uid} 过期，清理 ${fileKeys.length} 个 R2 文件`);
-        fileKeys.forEach(key => {
-          storageService.deleteFile(key).catch(err => {
-            console.error(`[文件清理] 删除 R2 文件失败: ${key}`, (err as Error).message);
-          });
-        });
-      }
-    }
     dbService.deleteAllSessionDBsForUID(uid);
   });
 }, 1 * 60 * 1000);
