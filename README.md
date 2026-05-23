@@ -212,7 +212,7 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 
 ```
 Simple-web-chat/
-├── server.ts                 # 后端主入口（Express + WebSocket + 文件上传端点 + 动态配置注入 /js/config.js）
+├── server.ts                 # 后端主入口（Express + WebSocket + 上传/下载端点 + 动态配置 /js/config.js）
 ├── .env.example             # 对象存储配置模板
 ├── tsconfig.json            # TypeScript 编译配置
 ├── package.json             # 项目配置文件
@@ -258,13 +258,15 @@ Simple-web-chat/
 - **消息编辑/撤回**：提供 `editMessage` 与 `recallMessage` 协议，服务端校验消息归属与会话关系后更新数据库并双向广播变更
 - **消息已读同步**：通过 `read_at` 字段标记已读状态；当用户进入会话或正在查看该会话时，自动更新并推送已读状态
 - **心跳响应机制**：处理前端 `ping` 心跳并回传 `pong`，用于客户端连接质量与延迟测量
-- **UID 生命周期管理**：记录 UID 创建时间，自动计算 24 小时过期时间，前后端统一校验 UID 有效性
+- **UID 生命周期管理**：记录 UID 创建时间，自动计算 24 小时过期时间，前后端统一校验 UID 有效性；过期时自动删除关联的会话 DB 文件
 - **会话数据库独立存储**：每个会话维度拥有独立数据库文件，存放在 `/db` 目录，file 命名规则为 `uid1,uid2.db`（排序避免重复）
-- **自动清理策略**：定时检测 UID 过期状态，过期 UID 对应的数据库文件自动删除（带重试机制，确保文件删除安全）
+- **对象存储服务**：支持 Cloudflare R2 / S3 兼容存储，提供预签名上传 URL、带 `response-content-disposition` 的预签名下载 URL（307 重定向，不经过 VPS 中转文件流量）、文件删除
+- **文件上传校验**：前后端双重校验文件大小，限制值由 `MAX_FILE_SIZE` 环境变量统一控制，通过 `/js/config.js` 动态注入前端
+- **动态前端配置**：`/js/config.js` 由服务端动态生成，向浏览器注入 `MAX_FILE_SIZE` 等后端配置
 
 ### 前端实现
 
-- **模块化架构**：`script.js` 仅负责入口装配，核心逻辑拆分至 `app-state`、`uid`、`message`、`session`、`ws` 模块
+- **模块化架构**：`script.js` 仅负责入口装配，核心逻辑拆分至 `app-state`、`uid`、`message`、`session`、`ws`、`file-upload` 模块
 - **UI 交互**：会话管理、聊天窗口、消息输入等
 - **WebSocket 通信**：与服务器建立持久连接
 - **本地存储**：使用 localStorage 保存会话、备注和 ID 信息
@@ -277,6 +279,7 @@ Simple-web-chat/
 - **编辑时间显示**：消息编辑后，小字时间更新为编辑时间并附带“已编辑”标记
 - **UID 状态显示**：实时显示 UID 剩余有效期，即将过期时带有警告标识
 - **输入框交互**：桌面 Enter 发送 / 移动端 Enter 换行；粘贴保留原始换行格式；自动高度扩展；空内容禁用发送
+- **文件上传**：支持图片和文件上传，预签名 URL 直传 R2；前端预检文件大小、类型，超限直接拦截；未知类型自动 fallback `application/octet-stream`；上传期间切换会话不会发错目标（入口捕获 targetId）
 
 ## 📊 数据库设计
 
@@ -296,21 +299,32 @@ Simple-web-chat/
 
 ## 🌐 网络协议
 
-### 文件上传流程
+### 文件上传与下载流程
 
-文件采用**预签名 URL 直传**方式，不经过 VPS：
+文件采用**预签名 URL 直传**方式，上传和下载均不经过 VPS 中转文件流量：
 
-1. 客户端 `POST /api/upload/presign` 获取预签名上传 URL
-2. 客户端 `PUT` 文件到对象存储（直传 R2）
-3. 客户端发送 `file_message` WebSocket 消息通知接收方
+**上传**
+1. 前端检查 `file.size` 是否超限，超限直接拦截
+2. 客户端 `POST /api/upload/presign` 获取预签名上传 URL（后端也会校验 fileSize）
+3. 客户端 `PUT` 文件到对象存储（直传 R2）
+4. 客户端发送 `file_message` WebSocket 消息通知接收方
+
+**下载**
+5. 接收方点击文件卡片，发起 `GET /api/download?key=...&name=...`（同源请求）
+6. 后端生成带 `response-content-disposition` 的 R2 预签名 GET URL，返回 307 Redirect
+7. 浏览器跟随重定向直连 R2 下载，R2 返回文件流 + 正确文件名
 
 ```javascript
-// 请求预签名 URL（前端会先检查 file.size 是否超限，超限直接拦截）
+// 请求预签名上传 URL
 POST /api/upload/presign
 { fileName: "photo.jpg", contentType: "image/jpeg", fileSize: 1024000 }
 
 // 响应
-{ uploadUrl: "https://...", publicUrl: "https://...", fileKey: "chat/2026/05/10/..." }
+{ uploadUrl: "https://...", publicUrl: "https://...", fileKey: "chat/2026/05/10/...", headers: {...} }
+
+// 请求下载（同源，download 属性生效）
+GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
+→ 307 Redirect → R2 预签名 URL（含 response-content-disposition）
 
 // 文件消息（通过 WebSocket 发送）
 { type: "file_message", to: "peerUID", msgType: "image", content: { name, size, url, fileKey } }
