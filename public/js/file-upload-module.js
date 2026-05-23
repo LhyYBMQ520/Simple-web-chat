@@ -90,11 +90,13 @@
 
       if (typeof onUploadStart === 'function') onUploadStart();
 
-      try {
-        const presigned = await getPresignedUrl(file.name, file.type, file.size);
-        await uploadToStorage(presigned.uploadUrl, file, file.type, presigned.headers);
+      var contentType = file.type || 'application/octet-stream';
 
-        const msgType = isImageType(file.type) ? 'image' : 'file';
+      try {
+        const presigned = await getPresignedUrl(file.name, contentType, file.size);
+        await uploadToStorage(presigned.uploadUrl, file, contentType, presigned.headers);
+
+        const msgType = isImageType(contentType) ? 'image' : 'file';
         wsModule.sendFileMessage(state.current, msgType, {
           name: file.name,
           size: file.size,
@@ -125,9 +127,11 @@
         return;
       }
 
+      var contentType = file.type || 'image/png';
+
       try {
-        const presigned = await getPresignedUrl(file.name || 'paste.png', file.type, file.size);
-        await uploadToStorage(presigned.uploadUrl, file, file.type, presigned.headers);
+        const presigned = await getPresignedUrl(file.name || 'paste.png', contentType, file.size);
+        await uploadToStorage(presigned.uploadUrl, file, contentType, presigned.headers);
         wsModule.sendFileMessage(state.current, 'image', {
           name: file.name || 'paste.png',
           size: file.size,

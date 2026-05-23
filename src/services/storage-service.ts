@@ -67,7 +67,6 @@ export function createStorageService(): StorageService {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     const random = crypto.randomBytes(8).toString('hex');
-    const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')) : '';
     const safeName = fileName
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .substring(0, 64);
