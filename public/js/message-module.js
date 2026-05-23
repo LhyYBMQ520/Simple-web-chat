@@ -218,7 +218,7 @@
         const file = parseFileContent(message);
         const card = document.createElement('a');
         card.className = 'msg-file-card';
-        card.href = file ? file.url : '#';
+        card.href = file ? ('/api/download?key=' + encodeURIComponent(file.fileKey || '') + '&name=' + encodeURIComponent(file.name || '')) : '#';
         card.target = '_blank';
         card.rel = 'noopener';
         card.download = file ? file.name : '';

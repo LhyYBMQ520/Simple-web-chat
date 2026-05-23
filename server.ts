@@ -28,6 +28,31 @@ const storageService = createStorageService();
 
 dbService.cleanupOrphanedDBFiles();
 
+app.get('/api/download', async (req, res) => {
+  const { key: fileKey, name: fileName } = req.query;
+
+  if (!fileKey || typeof fileKey !== 'string') {
+    res.status(400).json({ error: '缺少文件标识' });
+    return;
+  }
+
+  if (!storageService.isConfigured()) {
+    res.status(503).json({ error: '对象存储未配置' });
+    return;
+  }
+
+  try {
+    const safeName = typeof fileName === 'string' && fileName
+      ? fileName
+      : fileKey.split('/').pop() || 'download';
+    const presignedUrl = await storageService.generateDownloadUrl(fileKey, safeName);
+    res.redirect(307, presignedUrl);
+  } catch (err) {
+    console.error('[下载签名] 失败:', (err as Error).message);
+    res.status(500).json({ error: '生成下载链接失败' });
+  }
+});
+
 app.post('/api/upload/presign', async (req, res) => {
   try {
     if (!storageService.isConfigured()) {

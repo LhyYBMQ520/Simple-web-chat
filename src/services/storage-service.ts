@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'node:crypto';
 import {
@@ -19,7 +19,9 @@ export interface PresignedUploadResult {
 
 export interface StorageService {
   generateUploadUrl(fileName: string, contentType: string): Promise<PresignedUploadResult>;
+  generateDownloadUrl(fileKey: string, fileName: string): Promise<string>;
   deleteFile(fileKey: string): Promise<void>;
+  buildPublicUrl(fileKey: string): string;
   isConfigured(): boolean;
 }
 
@@ -46,6 +48,17 @@ export function createStorageService(): StorageService {
 
   function isConfigured(): boolean {
     return configured;
+  }
+
+  function buildPublicUrl(fileKey: string): string {
+    const needsBucketPath = publicUrl
+      && publicUrl.includes('r2.dev')
+      && !publicUrl.endsWith('/' + STORAGE_BUCKET);
+
+    const baseUrl = publicUrl
+      ? (needsBucketPath ? `${publicUrl}/${STORAGE_BUCKET}` : publicUrl)
+      : `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}`;
+    return `${baseUrl}/${fileKey}`;
   }
 
   function generateFileKey(fileName: string): string {
@@ -83,14 +96,7 @@ export function createStorageService(): StorageService {
       { expiresIn: UPLOAD_URL_EXPIRY }
     );
 
-    const needsBucketPath = publicUrl
-      && publicUrl.includes('r2.dev')
-      && !publicUrl.endsWith('/' + STORAGE_BUCKET);
-
-    const baseUrl = publicUrl
-      ? (needsBucketPath ? `${publicUrl}/${STORAGE_BUCKET}` : publicUrl)
-      : `${STORAGE_ENDPOINT}/${STORAGE_BUCKET}`;
-    const finalPublicUrl = `${baseUrl}/${fileKey}`;
+    const finalPublicUrl = buildPublicUrl(fileKey);
 
     return {
       uploadUrl: uploadUrl.toString(),
@@ -98,6 +104,28 @@ export function createStorageService(): StorageService {
       fileKey,
       headers: { 'Content-Disposition': disposition }
     } as PresignedUploadResult & { headers: Record<string, string> };
+  }
+
+  async function generateDownloadUrl(fileKey: string, fileName: string): Promise<string> {
+    if (!client) {
+      throw new Error('对象存储未配置，请设置环境变量');
+    }
+
+    const encodedName = encodeURIComponent(fileName)
+      .replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+    const disposition = `attachment; filename*=UTF-8''${encodedName}`;
+
+    const url = await getSignedUrl(
+      client,
+      new GetObjectCommand({
+        Bucket: STORAGE_BUCKET,
+        Key: fileKey,
+        ResponseContentDisposition: disposition
+      }),
+      { expiresIn: UPLOAD_URL_EXPIRY }
+    );
+
+    return url.toString();
   }
 
   async function deleteFile(fileKey: string): Promise<void> {
@@ -113,7 +141,9 @@ export function createStorageService(): StorageService {
 
   return {
     generateUploadUrl,
+    generateDownloadUrl,
     deleteFile,
+    buildPublicUrl,
     isConfigured
   };
 }
