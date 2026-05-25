@@ -15,6 +15,15 @@ export interface MessageRow {
   read_at: number | null;
   msg_type: string;
   file_key: string | null;
+  quote_id: number | null;
+}
+
+export interface QuoteMessage {
+  id: number;
+  sender: string;
+  content: string;
+  msgType: string;
+  status: string;
 }
 
 export interface MessagePayload {
@@ -28,6 +37,8 @@ export interface MessagePayload {
   readAt: number | null;
   msgType: string;
   fileKey: string | null;
+  quoteId: number | null;
+  quoteMessage: QuoteMessage | null;
 }
 
 export interface SessionDBService {
@@ -37,6 +48,7 @@ export interface SessionDBService {
   deleteAllSessionDBsForUID(targetUID: string): void;
   cleanupOrphanedDBFiles(): void;
   toMessagePayload(row: MessageRow): MessagePayload;
+  getQuotedMessage(db: Database.Database, quoteId: number): QuoteMessage | null;
   updateMessagesReadState(sessionDB: Database.Database, readerUid: string, peerUid: string): MessagePayload[];
   getConversationMessage(sessionDB: Database.Database, messageId: number, uid1: string, uid2: string): MessageRow | undefined;
   previewContent(content: unknown, maxLength?: number): string;
@@ -93,6 +105,9 @@ export function createSessionDBService(): SessionDBService {
     }
     if (!columns.includes('file_key')) {
       db.exec('ALTER TABLE messages ADD COLUMN file_key TEXT');
+    }
+    if (!columns.includes('quote_id')) {
+      db.exec('ALTER TABLE messages ADD COLUMN quote_id INTEGER');
     }
 
     sessionDBCache.set(key, db);
@@ -187,7 +202,23 @@ export function createSessionDBService(): SessionDBService {
       editedAt: row.edited_at || null,
       readAt: row.read_at || null,
       msgType: row.msg_type || 'text',
-      fileKey: row.file_key || null
+      fileKey: row.file_key || null,
+      quoteId: row.quote_id || null,
+      quoteMessage: null
+    };
+  }
+
+  function getQuotedMessage(db: Database.Database, quoteId: number): QuoteMessage | null {
+    const row = db.prepare('SELECT id, sender, content, msg_type, status FROM messages WHERE id=?').get(quoteId) as {
+      id: number; sender: string; content: string; msg_type: string; status: string;
+    } | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      sender: row.sender,
+      content: row.content,
+      msgType: row.msg_type || 'text',
+      status: row.status || 'normal'
     };
   }
 
@@ -275,6 +306,7 @@ export function createSessionDBService(): SessionDBService {
     deleteAllSessionDBsForUID,
     cleanupOrphanedDBFiles,
     toMessagePayload,
+    getQuotedMessage,
     updateMessagesReadState,
     getConversationMessage,
     previewContent

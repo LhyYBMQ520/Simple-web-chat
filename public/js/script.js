@@ -119,12 +119,13 @@
       wsModule.sendEditMessage(state.current, editingMessageId, text);
       editingMessageId = null;
     } else {
-      wsModule.sendChatMessage(state.current, text);
+      wsModule.sendChatMessage(state.current, text, quotedMessage ? quotedMessage.id : undefined);
     }
 
     el.value = '';
     el.style.height = '';
     el.focus();
+    clearQuoteState();
     updateSendButtonState();
   }
 
@@ -166,12 +167,16 @@
       document.getElementById('title').innerText = '请选择会话';
       document.getElementById('msgBox').innerHTML = '';
       document.querySelector('.input-bar').style.display = 'none';
+      clearQuoteState();
+      editingMessageId = null;
       render();
       return;
     }
 
     state.current = id;
     document.getElementById('msgBox').innerHTML = '';
+    clearQuoteState();
+    editingMessageId = null;
     sessionModule.updateChatHeader();
     wsModule.syncActiveChatState();
 
@@ -314,6 +319,7 @@
     messageStatus: MESSAGE_STATUS,
     onEditMessage: editOwnMessage,
     onRecallMessage: recallOwnMessage,
+    onQuoteMessage: quoteMessage,
     onAddSession: addSession,
     onRenderSessions: render
   });
@@ -413,6 +419,50 @@
   let updateSendButtonState;
   let autoResizeTextarea;
   let editingMessageId = null;
+  let quotedMessage = null;
+
+  function clearQuoteState() {
+    quotedMessage = null;
+    var bar = document.getElementById('quotePreviewBar');
+    if (bar) bar.style.display = 'none';
+  }
+
+  function quoteMessage(message) {
+    if (!message || message.status !== MESSAGE_STATUS.NORMAL) return;
+    quotedMessage = {
+      id: message.id,
+      sender: message.sender,
+      content: message.content,
+      msgType: message.msgType
+    };
+    renderQuotePreview();
+    document.getElementById('msgInput').focus();
+  }
+
+  function renderQuotePreview() {
+    if (!quotedMessage) return;
+    var bar = document.getElementById('quotePreviewBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'quotePreviewBar';
+      bar.className = 'quote-preview-bar';
+      bar.style.display = 'none';
+      var inputBar = document.querySelector('.input-bar');
+      inputBar.parentNode.insertBefore(bar, inputBar);
+    }
+    var senderLabel = quotedMessage.sender === state.myId ? '你' : (quotedMessage.sender || '').slice(0, 8);
+    var contentText = quotedMessage.msgType === 'image' ? '[图片]' : quotedMessage.msgType === 'file' ? '[文件]' : quotedMessage.content;
+    if (contentText && contentText.length > 50) contentText = contentText.slice(0, 50) + '...';
+    bar.innerHTML =
+      '<div class="quote-preview-left">' +
+        '<i class="fa-solid fa-quote-left"></i>' +
+        '<span class="quote-preview-sender">' + senderLabel + '</span>' +
+        '<span class="quote-preview-content">' + (contentText || '') + '</span>' +
+      '</div>' +
+      '<button class="quote-preview-close" title="取消引用"><i class="fa-solid fa-xmark"></i></button>';
+    bar.style.display = 'flex';
+    bar.querySelector('.quote-preview-close').onclick = clearQuoteState;
+  }
 
   window.onload = () => {
     updateConnectionStatusUI();
@@ -462,14 +512,21 @@
     };
 
     msgInput.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && editingMessageId !== null) {
-        e.preventDefault();
-        editingMessageId = null;
-        msgInput.value = '';
-        msgInput.style.height = '';
-        autoResizeTextarea();
-        updateSendButtonState();
-        return;
+      if (e.key === 'Escape') {
+        if (quotedMessage !== null) {
+          e.preventDefault();
+          clearQuoteState();
+          return;
+        }
+        if (editingMessageId !== null) {
+          e.preventDefault();
+          editingMessageId = null;
+          msgInput.value = '';
+          msgInput.style.height = '';
+          autoResizeTextarea();
+          updateSendButtonState();
+          return;
+        }
       }
 
       if (e.key !== 'Enter') return;

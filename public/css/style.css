@@ -326,8 +326,120 @@ button:hover {
   background: rgba(220, 38, 38, 0.95);
 }
 
-.msg.other .msg-action-btn {
+.msg.other .msg-action-btn:not(.quote) {
   display: none;
+}
+
+/* ===== Quoted message inside bubble ===== */
+.msg-quote {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.msg-quote:hover {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.msg.other .msg-quote {
+  border-left-color: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.msg.other .msg-quote:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.msg-quote-header {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  margin-bottom: 2px;
+}
+
+.msg-quote-content {
+  font-size: 12px;
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+/* ===== Quote preview bar (above input) ===== */
+.quote-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #f0f9ff;
+  border-top: 1px solid #bae6fd;
+  border-bottom: 1px solid #bae6fd;
+  font-size: 13px;
+  gap: 10px;
+}
+
+.quote-preview-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.quote-preview-left .fa-quote-left {
+  color: #3b82f6;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.quote-preview-sender {
+  font-weight: 600;
+  color: #1e40af;
+  flex-shrink: 0;
+}
+
+.quote-preview-content {
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-preview-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  transition: 0.15s;
+}
+
+.quote-preview-close:hover {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+/* ===== Message highlight ===== */
+.msg-highlight {
+  animation: msg-highlight-anim 2s ease;
+}
+
+@keyframes msg-highlight-anim {
+  0% { background-color: rgba(59, 130, 246, 0.3); }
+  100% { background-color: transparent; }
 }
 
 .input-bar {

@@ -26,8 +26,8 @@ type WSMessage =
   | { type: 'accept'; from: string }
   | { type: 'getHistory'; with: string }
   | { type: 'activeChat'; with?: string }
-  | { type: 'message'; to: string; content: unknown }
-  | { type: 'file_message'; to: string; msgType: unknown; content: unknown }
+  | { type: 'message'; to: string; content: unknown; quoteId?: unknown }
+  | { type: 'file_message'; to: string; msgType: unknown; content: unknown; quoteId?: unknown }
   | { type: 'editMessage'; messageId: unknown; to: string; content: unknown }
   | { type: 'recallMessage'; messageId: unknown; to: string };
 
@@ -127,7 +127,13 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
           const sessionDB = dbService.getSessionDB(uid, msg.with);
           const readUpdates = dbService.updateMessagesReadState(sessionDB, uid, msg.with);
           const history = sessionDB.prepare('SELECT * FROM messages WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?) ORDER BY time ASC');
-          const list = history.all(uid, msg.with, msg.with, uid).map(row => dbService.toMessagePayload(row as Parameters<typeof dbService.toMessagePayload>[0]));
+          const list = history.all(uid, msg.with, msg.with, uid).map(row => {
+            const payload = dbService.toMessagePayload(row as Parameters<typeof dbService.toMessagePayload>[0]);
+            if (payload.quoteId !== null) {
+              payload.quoteMessage = dbService.getQuotedMessage(sessionDB, payload.quoteId);
+            }
+            return payload;
+          });
 
           ws.send(JSON.stringify({ type: 'history', list }));
 
@@ -169,9 +175,21 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             return;
           }
 
-          console.log(`[消息] ${uid} -> ${msg.to} : ${content}`);
+          const quoteId = Number.isInteger(Number(msg.quoteId)) && Number(msg.quoteId) > 0 ? Number(msg.quoteId) : null;
+          let quoteMessage = null;
 
           const sessionDB = dbService.getSessionDB(uid, msg.to);
+
+          if (quoteId !== null) {
+            quoteMessage = dbService.getQuotedMessage(sessionDB, quoteId);
+            if (!quoteMessage) {
+              ws.send(JSON.stringify({ type: 'error', message: '引用的消息不存在' }));
+              return;
+            }
+          }
+
+          console.log(`[消息] ${uid} -> ${msg.to} : ${content}${quoteId ? ' | 引用消息ID: ' + quoteId : ''}`);
+
           const now = Date.now();
           const target = clients.get(msg.to);
           const receiverIsActive = !!(
@@ -182,8 +200,8 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
           );
           const readAt = receiverIsActive ? now : null;
 
-          const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type) VALUES (?,?,?,?,?,?,?,?)');
-          const result = insert.run(uid, msg.to, content, now, 'normal', null, readAt, 'text');
+          const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type,quote_id) VALUES (?,?,?,?,?,?,?,?,?)');
+          const result = insert.run(uid, msg.to, content, now, 'normal', null, readAt, 'text', quoteId);
 
           const messagePayload = {
             id: Number(result.lastInsertRowid),
@@ -194,7 +212,9 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             status: 'normal',
             editedAt: null,
             readAt,
-            msgType: 'text'
+            msgType: 'text',
+            quoteId,
+            quoteMessage
           };
 
           ws.send(JSON.stringify({ type: 'msg', message: messagePayload }));
@@ -227,9 +247,22 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
           }
 
           const contentStr = JSON.stringify(msg.content);
-          console.log(`[文件消息] ${uid} -> ${msg.to} : ${msgType} | ${(msg.content as Record<string, string>).name || 'unknown'}`);
+
+          const quoteId = Number.isInteger(Number(msg.quoteId)) && Number(msg.quoteId) > 0 ? Number(msg.quoteId) : null;
+          let quoteMessage = null;
 
           const sessionDB = dbService.getSessionDB(uid, msg.to);
+
+          if (quoteId !== null) {
+            quoteMessage = dbService.getQuotedMessage(sessionDB, quoteId);
+            if (!quoteMessage) {
+              ws.send(JSON.stringify({ type: 'error', message: '引用的消息不存在' }));
+              return;
+            }
+          }
+
+          console.log(`[文件消息] ${uid} -> ${msg.to} : ${msgType} | ${(msg.content as Record<string, string>).name || 'unknown'}${quoteId ? ' | 引用消息ID: ' + quoteId : ''}`);
+
           const now = Date.now();
           const target = clients.get(msg.to);
           const receiverIsActive = !!(
@@ -243,8 +276,8 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
           const fileKey = typeof (msg.content as Record<string, unknown>).fileKey === 'string'
             ? (msg.content as Record<string, string>).fileKey : null;
 
-          const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type,file_key) VALUES (?,?,?,?,?,?,?,?,?)');
-          const result = insert.run(uid, msg.to, contentStr, now, 'normal', null, readAt, msgType, fileKey);
+          const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type,file_key,quote_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
+          const result = insert.run(uid, msg.to, contentStr, now, 'normal', null, readAt, msgType, fileKey, quoteId);
 
           const messagePayload = {
             id: Number(result.lastInsertRowid),
@@ -256,7 +289,9 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             editedAt: null,
             readAt,
             msgType,
-            fileKey
+            fileKey,
+            quoteId,
+            quoteMessage
           };
 
           ws.send(JSON.stringify({ type: 'msg', message: messagePayload }));
@@ -316,6 +351,9 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             edited_at: editedAt,
             status: row.status || 'normal'
           });
+          if (updatedPayload.quoteId !== null) {
+            updatedPayload.quoteMessage = dbService.getQuotedMessage(sessionDB, updatedPayload.quoteId);
+          }
           const eventPayload = JSON.stringify({ type: 'messageEdited', message: updatedPayload });
 
           ws.send(eventPayload);

@@ -5,6 +5,7 @@
       messageStatus,
       onEditMessage,
       onRecallMessage,
+      onQuoteMessage,
       onAddSession,
       onRenderSessions
     } = options;
@@ -49,6 +50,8 @@
 
       const msgType = raw.msgType || 'text';
       const fileKey = raw.fileKey || null;
+      const quoteId = raw.quoteId != null ? Number(raw.quoteId) : null;
+      const quoteMessage = raw.quoteMessage || null;
 
       return {
         id,
@@ -60,7 +63,9 @@
         editedAt,
         readAt,
         msgType,
-        fileKey
+        fileKey,
+        quoteId,
+        quoteMessage
       };
     }
 
@@ -81,14 +86,18 @@
       if (message.status === messageStatus.RECALLED) {
         return message.sender === state.myId ? '你撤回了一条消息' : '对方撤回了一条消息';
       }
+      let prefix = '';
+      if (message.quoteId) {
+        prefix = '引用: ';
+      }
       if (message.msgType === 'image') {
-        return '[图片]';
+        return prefix + '[图片]';
       }
       if (message.msgType === 'file') {
         const file = parseFileContent(message);
-        return file ? `[文件] ${file.name}` : '[文件]';
+        return prefix + (file ? `[文件] ${file.name}` : '[文件]');
       }
-      return message.content;
+      return prefix + message.content;
     }
 
     function getMessageMetaText(message) {
@@ -120,6 +129,20 @@
       const actions = document.createElement('div');
       actions.className = 'msg-actions';
 
+      // 引用按钮 - 所有非撤回消息都可引用
+      if (message.status !== messageStatus.RECALLED && message.id !== null) {
+        const quoteBtn = document.createElement('button');
+        quoteBtn.type = 'button';
+        quoteBtn.className = 'msg-action-btn quote';
+        quoteBtn.title = '引用回复';
+        quoteBtn.innerHTML = '<i class="fa-solid fa-quote-left"></i>';
+        quoteBtn.onclick = event => {
+          event.stopPropagation();
+          onQuoteMessage(message);
+        };
+        actions.appendChild(quoteBtn);
+      }
+
       if (canEditMessage(message)) {
         const editBtn = document.createElement('button');
         editBtn.type = 'button';
@@ -133,16 +156,18 @@
         actions.appendChild(editBtn);
       }
 
-      const recallBtn = document.createElement('button');
-      recallBtn.type = 'button';
-      recallBtn.className = 'msg-action-btn recall';
-      recallBtn.title = '撤回消息';
-      recallBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
-      recallBtn.onclick = event => {
-        event.stopPropagation();
-        onRecallMessage(message.id);
-      };
-      actions.appendChild(recallBtn);
+      if (canOperateMessage(message)) {
+        const recallBtn = document.createElement('button');
+        recallBtn.type = 'button';
+        recallBtn.className = 'msg-action-btn recall';
+        recallBtn.title = '撤回消息';
+        recallBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
+        recallBtn.onclick = event => {
+          event.stopPropagation();
+          onRecallMessage(message.id);
+        };
+        actions.appendChild(recallBtn);
+      }
 
       return actions;
     }
@@ -167,8 +192,34 @@
       el.querySelector('.msg-img-name')?.remove();
       el.querySelector('.msg-file-card')?.remove();
       el.querySelector('.msg-actions')?.remove();
+      el.querySelector('.msg-quote')?.remove();
 
       const isRecalled = message.status === messageStatus.RECALLED;
+
+      // 引用消息预览
+      if (message.quoteMessage && message.quoteId) {
+        const quoteEl = document.createElement('div');
+        quoteEl.className = 'msg-quote';
+        const qm = message.quoteMessage;
+        const isQuotedRecalled = qm.status === 'recalled';
+        const quoteSender = qm.sender === state.myId ? '你' : (qm.sender || '').slice(0, 8);
+        const quoteContent = isQuotedRecalled
+          ? '消息已被撤回'
+          : (qm.msgType === 'image' ? '[图片]' : qm.msgType === 'file' ? '[文件]' : qm.content);
+        quoteEl.innerHTML =
+          '<div class="msg-quote-header"><i class="fa-solid fa-quote-left"></i> ' + escapeHtml(quoteSender) + '</div>' +
+          '<div class="msg-quote-content">' + escapeHtml(quoteContent || '') + '</div>';
+        quoteEl.title = '点击跳转到原消息';
+        quoteEl.onclick = function () {
+          const targetMsg = document.querySelector('.msg[data-message-id="' + qm.id + '"]');
+          if (targetMsg) {
+            targetMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetMsg.classList.add('msg-highlight');
+            setTimeout(function () { targetMsg.classList.remove('msg-highlight'); }, 2000);
+          }
+        };
+        el.appendChild(quoteEl);
+      }
 
       if (isRecalled) {
         const textEl = document.createElement('div');
@@ -251,7 +302,9 @@
       metaEl.innerText = metaText;
       metaEl.style.display = metaText ? '' : 'none';
 
-      if (canOperateMessage(message)) {
+      // 有引用或可操作则显示按钮栏
+      const hasActions = message.status !== messageStatus.RECALLED && message.id !== null;
+      if (hasActions) {
         el.appendChild(createMessageActions(message));
       }
     }

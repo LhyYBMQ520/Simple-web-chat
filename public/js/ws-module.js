@@ -66,8 +66,10 @@
       return sendJSON({ type: 'getHistory', with: peerId });
     }
 
-    function sendChatMessage(to, content) {
-      return sendJSON({ type: 'message', to, content });
+    function sendChatMessage(to, content, quoteId) {
+      const payload = { type: 'message', to, content };
+      if (quoteId != null) payload.quoteId = quoteId;
+      return sendJSON(payload);
     }
 
     function sendEditMessage(to, messageId, content) {
@@ -78,8 +80,10 @@
       return sendJSON({ type: 'recallMessage', to, messageId });
     }
 
-    function sendFileMessage(to, msgType, content) {
-      return sendJSON({ type: 'file_message', to, msgType, content });
+    function sendFileMessage(to, msgType, content, quoteId) {
+      const payload = { type: 'file_message', to, msgType, content };
+      if (quoteId != null) payload.quoteId = quoteId;
+      return sendJSON(payload);
     }
 
     function connect() {
