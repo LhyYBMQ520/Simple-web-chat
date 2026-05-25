@@ -18,6 +18,7 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天应用。用�
 - **✏️ 消息编辑与撤回**：点击编辑按钮一键回填至输入框，修改后发送即可更新消息；或撤回为系统提示态
 - **⌨️ 多行输入框**：支持桌面 Enter 发送 / 移动端 Enter 换行，Ctrl或Shift / Cmd+Enter 手动换行，粘贴文本完整保留原始换行格式，自动高度适配最多 3 行，随后使用滚动条调整上下
 - **😊 表情选择器**：输入框旁表情按钮，弹出面板支持分类浏览和关键词搜索，点击表情插入光标位置
+- **💬 引用回复**：点击消息旁的引用按钮，输入栏上方显示被引用消息预览，发送后可点击引用跳转到原消息并高亮
 - **✅ 消息已读状态**：每条消息在时间小字旁显示已读/未读状态，阅读状态可实时同步
 - **🖼️ 图片与文件传输**：支持发送图片（点击灯箱放大预览）和文件，通过 Cloudflare R2 对象存储直传，不占用 VPS 带宽和磁盘
 - **📶 连接状态与延迟**：会话列表标题右侧实时显示与服务器连接状态及网络延迟
@@ -203,7 +204,8 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 - **未读消息计数**：有未读消息时会在列表右上角显示红色小圆点
 - **消息历史**：切换会话时自动从服务端数据库加载完整的消息历史记录
 - **消息编辑/撤回**：点击消息旁的编辑按钮，原文即刻回填到输入框，修改后按 Enter 或点击发送直接更新消息；撤回后显示为“你撤回了一条消息/对方撤回了一条消息”
-- **输入框交互**：桌面端 Enter 发送 / 移动端 Enter 换行；Ctrl或Shift/Cmd+Enter 手动换行；粘贴保留完整换行格式；输入框自动增高最多 3 行后出现滚动条；空内容时发送按钮禁用并提示“不能发送空消息”；Esc 取消编辑回填；输入框左侧表情按钮点击弹出表情选择器
+- **引用回复**：点击消息旁的引用按钮，输入栏上方出现蓝色引用预览条，显示被引用消息的发送者和内容摘要；发送后消息气泡内展示引用预览，点击可跳转到原消息并高亮所在行
+- **输入框交互**：桌面端 Enter 发送 / 移动端 Enter 换行；Ctrl或Shift/Cmd+Enter 手动换行；粘贴保留完整换行格式；输入框自动增高最多 3 行后出现滚动条；空内容时发送按钮禁用并提示“不能发送空消息”；Esc 依次取消引用状态和编辑回填；输入框左侧表情按钮点击弹出表情选择器
 - **消息状态小字**：普通消息显示“时间 · 已读/未读”，已编辑消息显示“编辑时间 · 已编辑 · 已读/未读”
 - **撤回消息显示规则**：已撤回消息会清除时间与已读/未读状态显示
 - **连接状态显示**：在“会话列表”标题右侧显示连接中/重连中/已断开/已连接等状态图标
@@ -280,7 +282,7 @@ Simple-web-chat/
 - **已读回执展示**：在每条消息时间小字旁显示已读/未读，接收 `messagesRead` 推送后即时刷新
 - **编辑时间显示**：消息编辑后，小字时间更新为编辑时间并附带“已编辑”标记
 - **UID 状态显示**：实时显示 UID 剩余有效期，即将过期时带有警告标识
-- **输入框交互**：桌面 Enter 发送 / 移动端 Enter 换行；粘贴保留原始换行格式；自动高度扩展；空内容禁用发送；表情面板支持搜索和分类
+- **输入框交互**：桌面 Enter 发送 / 移动端 Enter 换行；粘贴保留原始换行格式；自动高度扩展；空内容禁用发送；表情面板支持搜索和分类；引用回复支持
 - **文件上传**：支持图片和文件上传，预签名 URL 直传 R2；前端预检文件大小、类型，超限直接拦截；未知类型自动 fallback `application/octet-stream`；上传期间切换会话不会发错目标（入口捕获 targetId）
 
 ## 📊 数据库设计
@@ -298,6 +300,8 @@ Simple-web-chat/
 | edited_at | INTEGER | 编辑时间戳（未编辑为 `NULL`） |
 | read_at | INTEGER | 已读时间戳（未读为 `NULL`） |
 | msg_type | TEXT | 消息类型（`text` / `image` / `file`） |
+| file_key | TEXT | R2 对象 Key，用于撤回时清理文件 |
+| quote_id | INTEGER | 引用的消息 ID（未引用为 `NULL`） |
 
 ## 🌐 网络协议
 
@@ -346,10 +350,11 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 // 同意请求
 {type: "accept", from: "requester_id"}
 
-// 发送消息
-{type: "message", to: "target_id", content: "message_content"}
+// 发送消息（可选 quoteId 引用回复某条消息）
+{type: "message", to: "target_id", content: "message_content", quoteId: 42}
 
-// 编辑消息
+// 发送文件/图片消息（可选 quoteId）
+{type: "file_message", to: "target_id", msgType: "image", content: {...}, quoteId: 42}
 {type: "editMessage", to: "target_id", messageId: 1, content: "new_content"}
 
 // 撤回消息
@@ -367,14 +372,14 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 // 获取历史消息
 {type: "getHistory", with: "other_id"}
 
-// 历史消息返回（list 中每条消息均为完整消息对象）
-{type: "history", list: [{id, sender, receiver, content, time, status, editedAt, readAt}]}
+// 历史消息返回（list 中每条消息均为完整消息对象，含可选 quoteId/quoteMessage）
+{type: "history", list: [{id, sender, receiver, content, time, status, editedAt, readAt, quoteId, quoteMessage}]}
 
-// 单条实时消息
-{type: "msg", message: {id, sender, receiver, content, time, status, editedAt, readAt}}
+// 单条实时消息（含可选 quoteId/quoteMessage）
+{type: "msg", message: {id, sender, receiver, content, time, status, editedAt, readAt, quoteId, quoteMessage}}
 
 // 消息被编辑
-{type: "messageEdited", message: {id, sender, receiver, content, time, status, editedAt, readAt}}
+{type: "messageEdited", message: {id, sender, receiver, content, time, status, editedAt, readAt, quoteId, quoteMessage}}
 
 // 消息被撤回
 {type: "messageRecalled", message: {id, sender, receiver, content, time, status, editedAt, readAt}}
