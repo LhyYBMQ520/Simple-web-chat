@@ -330,6 +330,16 @@ button:hover {
   display: none;
 }
 
+.msg.other .msg-action-btn.quote {
+  background: rgba(0, 0, 0, 0.08);
+  color: #64748b;
+}
+
+.msg.other .msg-action-btn.quote:hover {
+  background: rgba(0, 0, 0, 0.15);
+  color: #334155;
+}
+
 /* ===== Quoted message inside bubble ===== */
 .msg-quote {
   margin-bottom: 6px;
