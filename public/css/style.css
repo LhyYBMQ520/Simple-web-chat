@@ -280,6 +280,7 @@ button:hover {
 
 .msg-text {
   white-space: pre-wrap;
+  font-family: 'Noto Sans', 'Noto Sans SC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Color Emoji', system-ui, sans-serif;
 }
 
 .msg-meta {
@@ -352,7 +353,7 @@ button:hover {
   overflow-y: hidden;
   min-height: 42px;
   max-height: calc(1.4em * 3 + 20px);
-  font-family: inherit;
+  font-family: 'Noto Sans', 'Noto Sans SC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Color Emoji', system-ui, sans-serif;
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
 }

@@ -274,13 +274,6 @@
       container.style.display = "";
       isVisible = true;
 
-      // Focus search
-      if (searchInput) {
-        setTimeout(function () {
-          searchInput.focus();
-        }, 50);
-      }
-
       // If showing frequently used, re-render
       if (activeCategory === "__frequent__") {
         renderFrequentEmojis();

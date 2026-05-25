@@ -385,7 +385,6 @@
       msgInput.focus();
       autoResizeTextarea();
       updateSendButtonState();
-      emojiModule.hide();
     }
   });
 
