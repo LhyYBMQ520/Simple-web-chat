@@ -252,6 +252,19 @@ button:hover {
   gap: 8px;
 }
 
+.msg-row {
+  display: flex;
+  width: 100%;
+}
+
+.msg-row.me {
+  justify-content: flex-end;
+}
+
+.msg-row.other {
+  justify-content: flex-start;
+}
+
 .msg {
   max-width: 70%;
   padding: 10px 14px;
@@ -266,13 +279,11 @@ button:hover {
 }
 
 .msg.me {
-  align-self: flex-end;
   background: #3b82f6;
   color: white;
 }
 
 .msg.other {
-  align-self: flex-start;
   background: white;
   color: #1e293b;
 }
@@ -453,8 +464,12 @@ button:hover {
 }
 
 @keyframes msg-highlight-anim {
-  0% { background-color: rgba(59, 130, 246, 0.3); }
-  100% { background-color: transparent; }
+  0% {
+    background: rgba(59, 130, 246, 0.15);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .input-bar {

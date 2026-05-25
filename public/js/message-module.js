@@ -174,7 +174,13 @@
 
     function applyMessageToElement(el, message) {
       el.classList.remove('me', 'other', 'recalled', 'msg-image', 'msg-file');
-      el.classList.add(message.sender === state.myId ? 'me' : 'other');
+      const isMe = message.sender === state.myId;
+      el.classList.add(isMe ? 'me' : 'other');
+      const row = el.parentNode;
+      if (row && row.classList.contains('msg-row')) {
+        row.classList.remove('me', 'other');
+        row.classList.add(isMe ? 'me' : 'other');
+      }
       if (message.status === messageStatus.RECALLED) {
         el.classList.add('recalled');
       }
@@ -211,11 +217,11 @@
           '<div class="msg-quote-content">' + escapeHtml(quoteContent || '') + '</div>';
         quoteEl.title = '点击跳转到原消息';
         quoteEl.onclick = function () {
-          const targetMsg = document.querySelector('.msg[data-message-id="' + qm.id + '"]');
-          if (targetMsg) {
-            targetMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetMsg.classList.add('msg-highlight');
-            setTimeout(function () { targetMsg.classList.remove('msg-highlight'); }, 2000);
+          const targetRow = document.querySelector('.msg-row[data-message-id="' + qm.id + '"]');
+          if (targetRow) {
+            targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetRow.classList.add('msg-highlight');
+            setTimeout(function () { targetRow.classList.remove('msg-highlight'); }, 2000);
           }
         };
         el.appendChild(quoteEl);
@@ -323,10 +329,14 @@
     }
 
     function createMessageElement(message) {
+      const row = document.createElement('div');
+      row.className = 'msg-row';
+      row.dataset.messageId = message.id || '';
       const el = document.createElement('div');
       el.className = 'msg';
+      row.appendChild(el);
       applyMessageToElement(el, message);
-      return el;
+      return row;
     }
 
     function appendMessage(message, scroll) {
