@@ -4,8 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
   <link rel="stylesheet" type="text/css" href="fontawesome-free-7.2.0-web/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
-  <title>L菌の聊天室</title>
+  <title>L Chat</title>
 </head>
 
 <body>
@@ -39,6 +42,9 @@
       <div class="input-bar">
         <input type="file" id="fileInput" accept="image/*" style="display:none" multiple>
         <input type="file" id="docInput" style="display:none">
+        <button class="emoji-btn" id="emojiBtn" title="表情">
+          <i class="fa-regular fa-face-smile"></i>
+        </button>
         <button class="attach-btn" id="imageBtn" title="发送图片">
           <i class="fa-solid fa-image"></i>
         </button>
@@ -88,6 +94,8 @@
   <script src="js/session-module.js"></script>
   <script src="js/ws-module.js"></script>
   <script src="js/file-upload-module.js"></script>
+  <script src="js/emoji-data.js"></script>
+  <script src="js/emoji-module.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>

@@ -5,8 +5,10 @@
   const sessionModuleFactory = global.ChatSessionModule;
   const wsModuleFactory = global.ChatWsModule;
   const fileUploadModuleFactory = global.ChatFileUploadModule;
+  const emojiDataModule = global.ChatEmojiData;
+  const emojiModuleFactory = global.ChatEmojiModule;
 
-  if (!appStateModule || !uidModule || !messageModuleFactory || !sessionModuleFactory || !wsModuleFactory || !fileUploadModuleFactory) {
+  if (!appStateModule || !uidModule || !messageModuleFactory || !sessionModuleFactory || !wsModuleFactory || !fileUploadModuleFactory || !emojiDataModule || !emojiModuleFactory) {
     throw new Error('聊天模块加载失败，请检查 js 文件加载顺序');
   }
 
@@ -17,6 +19,7 @@
   let messageModule;
   let wsModule;
   let fileUploadModule;
+  let emojiModule;
 
   function getConnectionUIModel() {
     if (state.connectionState === 'connected') {
@@ -366,6 +369,26 @@
     if (bar) bar.style.display = 'none';
   };
 
+  // Initialize emoji module
+  emojiModule = emojiModuleFactory.createEmojiModule({
+    emojiData: emojiDataModule,
+    onInsertEmoji: function (emojiChar) {
+      var msgInput = document.getElementById('msgInput');
+      if (!msgInput) return;
+      var start = msgInput.selectionStart;
+      var end = msgInput.selectionEnd;
+      var val = msgInput.value;
+      msgInput.value = val.substring(0, start) + emojiChar + val.substring(end);
+      // Place cursor after inserted emoji
+      var newPos = start + emojiChar.length;
+      msgInput.selectionStart = msgInput.selectionEnd = newPos;
+      msgInput.focus();
+      autoResizeTextarea();
+      updateSendButtonState();
+      emojiModule.hide();
+    }
+  });
+
   global.copyMyId = function copyMyId() {
     uidModule.copyMyId(state);
   };
@@ -487,6 +510,11 @@
     });
 
     updateSendButtonState();
+
+    document.getElementById('emojiBtn').onclick = function (e) {
+      e.stopPropagation();
+      emojiModule.show(document.getElementById('emojiBtn'));
+    };
 
     document.getElementById('imageBtn').onclick = function () {
       document.getElementById('fileInput').click();
