@@ -86,6 +86,34 @@
       return sendJSON(payload);
     }
 
+    function sendCallRequest(to, callType) {
+      return sendJSON({ type: 'callRequest', to, callType });
+    }
+
+    function sendCallAccept(from) {
+      return sendJSON({ type: 'callAccept', from });
+    }
+
+    function sendCallReject(from, reason) {
+      return sendJSON({ type: 'callReject', from, reason });
+    }
+
+    function sendCallEnd(to) {
+      return sendJSON({ type: 'callEnd', to });
+    }
+
+    function sendCallOffer(to, sdp) {
+      return sendJSON({ type: 'callOffer', to, sdp });
+    }
+
+    function sendCallAnswer(to, sdp) {
+      return sendJSON({ type: 'callAnswer', to, sdp });
+    }
+
+    function sendIceCandidate(to, candidate) {
+      return sendJSON({ type: 'iceCandidate', to, candidate });
+    }
+
     function connect() {
       notifyConnectionState('connecting');
 
@@ -156,6 +184,41 @@
 
         if (d.type === 'online') {
           handlers.onOnline(d);
+          return;
+        }
+
+        if (d.type === 'callRequest') {
+          handlers.onCallRequest(d);
+          return;
+        }
+
+        if (d.type === 'callAccept') {
+          handlers.onCallAccept(d);
+          return;
+        }
+
+        if (d.type === 'callReject') {
+          handlers.onCallReject(d);
+          return;
+        }
+
+        if (d.type === 'callEnd') {
+          handlers.onCallEnd(d);
+          return;
+        }
+
+        if (d.type === 'callOffer') {
+          handlers.onCallOffer(d);
+          return;
+        }
+
+        if (d.type === 'callAnswer') {
+          handlers.onCallAnswer(d);
+          return;
+        }
+
+        if (d.type === 'iceCandidate') {
+          handlers.onIceCandidate(d);
         }
       };
 
@@ -181,7 +244,14 @@
       sendEditMessage,
       sendRecallMessage,
       sendFileMessage,
-      syncActiveChatState
+      syncActiveChatState,
+      sendCallRequest,
+      sendCallAccept,
+      sendCallReject,
+      sendCallEnd,
+      sendCallOffer,
+      sendCallAnswer,
+      sendIceCandidate
     };
   }
 

@@ -31,3 +31,7 @@ export const STORAGE_PUBLIC_URL = process.env.STORAGE_PUBLIC_URL || '';
 export const STORAGE_REGION = process.env.STORAGE_REGION || 'auto';
 export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10);
 export const UPLOAD_URL_EXPIRY = parseInt(process.env.UPLOAD_URL_EXPIRY || '300', 10);
+
+export const TURN_SERVER_URLS = process.env.TURN_SERVER_URLS || '';
+export const TURN_USERNAME = process.env.TURN_USERNAME || '';
+export const TURN_CREDENTIAL = process.env.TURN_CREDENTIAL || '';

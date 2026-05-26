@@ -17,7 +17,21 @@
       connectionState: 'disconnected',
       connectionLatency: null,
       uidStatus: 'valid',
-      uidTTL: 0
+      uidTTL: 0,
+      webrtc: {
+        pc: null,
+        localStream: null,
+        remoteStream: null,
+        screenStream: null,
+        callState: 'idle',
+        callType: null,
+        isMuted: false,
+        isVideoOff: false,
+        isScreenSharing: false,
+        pendingCandidates: [],
+        callStartTime: null,
+        callPeerId: null
+      }
     };
   }
 

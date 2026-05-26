@@ -87,8 +87,31 @@
     <img id="lightboxImg" src="" alt="预览图片">
   </div>
 
+  <!-- 通话悬浮层 -->
+  <div id="callOverlay" class="call-overlay" style="display:none;">
+    <div class="call-overlay-top">
+      <span class="call-status-text" id="callStatusText"></span>
+      <span class="call-duration" id="callDuration"></span>
+    </div>
+    <div class="call-video-container">
+      <video id="remoteVideo" class="call-remote-video" autoplay playsinline></video>
+      <video id="localVideo" class="call-local-video" autoplay playsinline muted></video>
+    </div>
+    <div class="call-controls" id="callControls">
+      <button id="callMuteBtn" class="call-ctrl-btn" title="静音"><i class="fa-solid fa-microphone"></i></button>
+      <button id="callVideoBtn" class="call-ctrl-btn" title="关闭摄像头" style="display:none;"><i class="fa-solid fa-video"></i></button>
+      <button id="callScreenBtn" class="call-ctrl-btn" title="屏幕共享" style="display:none;"><i class="fa-solid fa-desktop"></i></button>
+      <button id="callEndBtn" class="call-ctrl-btn call-ctrl-end" title="挂断"><i class="fa-solid fa-phone-slash"></i></button>
+    </div>
+  </div>
+
+  <!-- 来电提示 -->
+  <div id="callIncomingPrompt" class="call-incoming-prompt" style="display:none;"></div>
+
   <script src="js/config.js"></script>
   <script src="js/app-state.js"></script>
+  <script src="js/webrtc-module.js"></script>
+  <script src="js/webrtc-ui-module.js"></script>
   <script src="js/uid-module.js"></script>
   <script src="js/message-module.js"></script>
   <script src="js/session-module.js"></script>

@@ -3,6 +3,7 @@ import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import { PORT, PUBLIC_DIR, MAX_FILE_SIZE } from './src/config/constants.js';
+import { getIceServers } from './src/config/webrtc-config.js';
 import { createUIDService } from './src/services/uid-service.js';
 import { createSessionDBService } from './src/services/session-db-service.js';
 import { createStorageService } from './src/services/storage-service.js';
@@ -16,7 +17,12 @@ app.use(express.json());
 // 向前端注入服务端配置
 app.get('/js/config.js', (_req, res) => {
   res.type('application/javascript');
-  res.send(`window.__CHAT_CONFIG__ = { maxFileSize: ${MAX_FILE_SIZE} };`);
+  res.send(
+    `window.__CHAT_CONFIG__ = {` +
+    `  maxFileSize: ${MAX_FILE_SIZE},` +
+    `  webrtc: { iceServers: ${JSON.stringify(getIceServers())} }` +
+    `};`
+  );
 });
 
 app.use(express.static(PUBLIC_DIR));
@@ -128,6 +134,11 @@ server.listen(PORT, () => {
   console.log(`[存储配置] bucket=${process.env.STORAGE_BUCKET || '未设置'}`);
   console.log(`[存储配置] publicUrl=${process.env.STORAGE_PUBLIC_URL || '未设置'}`);
   console.log(`[存储配置] 状态=${storageService.isConfigured() ? '已就绪' : '未配置（文件传输不可用）'}`);
+
+  const iceServers = getIceServers();
+  const hasTurn = iceServers.some(s => 'username' in s);
+  console.log(`[WebRTC] STUN 服务器: ${iceServers.filter(s => !('username' in s)).length} 个`);
+  console.log(`[WebRTC] TURN 服务器: ${hasTurn ? '已配置' : '未配置（仅 STUN 直连）'}`);
 });
 
 function closeResources(): void {

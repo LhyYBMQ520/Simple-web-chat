@@ -3,6 +3,15 @@ import type { IncomingMessage } from 'node:http';
 import type { UIDService } from '../services/uid-service.js';
 import type { SessionDBService } from '../services/session-db-service.js';
 import type { StorageService } from '../services/storage-service.js';
+import {
+  handleCallRequest,
+  handleCallAccept,
+  handleCallReject,
+  handleCallEnd,
+  handleCallOffer,
+  handleCallAnswer,
+  handleIceCandidate
+} from './signaling-handler.js';
 
 export interface ClientInfo {
   ws: WebSocket;
@@ -29,7 +38,14 @@ type WSMessage =
   | { type: 'message'; to: string; content: unknown; quoteId?: unknown }
   | { type: 'file_message'; to: string; msgType: unknown; content: unknown; quoteId?: unknown }
   | { type: 'editMessage'; messageId: unknown; to: string; content: unknown }
-  | { type: 'recallMessage'; messageId: unknown; to: string };
+  | { type: 'recallMessage'; messageId: unknown; to: string }
+  | { type: 'callRequest'; to: string; callType: unknown }
+  | { type: 'callAccept'; from: string }
+  | { type: 'callReject'; from: string; reason?: unknown }
+  | { type: 'callEnd'; to: string }
+  | { type: 'callOffer'; to: string; sdp: unknown }
+  | { type: 'callAnswer'; to: string; sdp: unknown }
+  | { type: 'iceCandidate'; to: string; candidate: unknown };
 
 export function createConnectionHandler({ clients, broadcastOnline, uidService, dbService, storageService }: ConnectionHandlerDeps) {
   return (ws: WebSocket, req: IncomingMessage): void => {
@@ -431,6 +447,55 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
               `[消息撤回] ${uid} -> ${msg.to} | 消息ID: ${messageId} | 原文: "${dbService.previewContent(originalContent)}"`
             );
           }
+        }
+
+        if (msg.type === 'callRequest') {
+          if (!uid || uidService.isUIDExpired(uid)) {
+            ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期' }));
+            return;
+          }
+          handleCallRequest({ clients, uidService }, uid, msg);
+          return;
+        }
+
+        if (msg.type === 'callAccept') {
+          if (!uid || uidService.isUIDExpired(uid)) {
+            ws.send(JSON.stringify({ type: 'error', message: '您的 UID 已过期' }));
+            return;
+          }
+          handleCallAccept({ clients, uidService }, uid, msg);
+          return;
+        }
+
+        if (msg.type === 'callReject') {
+          if (!uid || uidService.isUIDExpired(uid)) {
+            return;
+          }
+          handleCallReject({ clients, uidService }, uid, msg);
+          return;
+        }
+
+        if (msg.type === 'callEnd') {
+          if (!uid) return;
+          handleCallEnd({ clients, uidService }, uid, msg);
+          return;
+        }
+
+        if (msg.type === 'callOffer') {
+          if (!uid) return;
+          handleCallOffer({ clients, uidService }, uid, msg);
+          return;
+        }
+
+        if (msg.type === 'callAnswer') {
+          if (!uid) return;
+          handleCallAnswer({ clients, uidService }, uid, msg);
+          return;
+        }
+
+        if (msg.type === 'iceCandidate') {
+          if (!uid) return;
+          handleIceCandidate({ clients, uidService }, uid, msg);
         }
       } catch (e) {
         console.error('[错误]', (e as Error).message);

@@ -7,6 +7,8 @@
   const fileUploadModuleFactory = global.ChatFileUploadModule;
   const emojiDataModule = global.ChatEmojiData;
   const emojiModuleFactory = global.ChatEmojiModule;
+  const webrtcModuleFactory = global.ChatWebRTCModule;
+  const webrtcUIModuleFactory = global.ChatWebRTCUIModule;
 
   if (!appStateModule || !uidModule || !messageModuleFactory || !sessionModuleFactory || !wsModuleFactory || !fileUploadModuleFactory || !emojiDataModule || !emojiModuleFactory) {
     throw new Error('聊天模块加载失败，请检查 js 文件加载顺序');
@@ -20,6 +22,8 @@
   let wsModule;
   let fileUploadModule;
   let emojiModule;
+  let webrtcModule;
+  let webrtcUIModule;
 
   function getConnectionUIModel() {
     if (state.connectionState === 'connected') {
@@ -298,11 +302,104 @@
   function handleConnectionStateChange(nextState) {
     state.connectionState = nextState;
     updateConnectionStatusUI();
+
+    // Notify WebRTC module - WebSocket reconnected, but media stream stays
+    if (webrtcModule && nextState === 'connected' && webrtcModule.isCallActive()) {
+      // Media path unaffected by signaling reconnect, no action needed
+    }
   }
 
   function handleLatencyUpdate(latency) {
     state.connectionLatency = Number.isFinite(latency) ? latency : null;
     updateConnectionStatusUI();
+  }
+
+  // === WebRTC signaling handlers ===
+
+  function handleCallRequest(d) {
+    if (!webrtcModule || !webrtcUIModule) return;
+    if (d.from && d.callType) {
+      webrtcModule.handleIncomingCall(d.from, d.callType);
+      webrtcUIModule.showIncomingCallPrompt(d.from, d.callType);
+    }
+  }
+
+  function handleCallAccept(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleCallAccepted(d.from);
+  }
+
+  function handleCallReject(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleCallRejected(d.from, d.reason);
+  }
+
+  function handleCallOffer(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleRemoteOffer(d.from, d.sdp);
+  }
+
+  function handleCallAnswer(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleRemoteAnswer(d.from, d.sdp);
+  }
+
+  function handleIceCandidateMsg(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleRemoteCandidate(d.from, d.candidate);
+  }
+
+  function handleRemoteCallEnd(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleRemoteEndCall();
+  }
+
+  // === WebRTC UI callbacks ===
+
+  function onCallStateChange(callState, callType) {
+    if (callState === 'idle') {
+      if (webrtcUIModule) webrtcUIModule.hideOverlay();
+      if (webrtcUIModule) webrtcUIModule.hideIncomingCallPrompt();
+    } else if (callState === 'calling') {
+      if (webrtcUIModule) webrtcUIModule.showCallingStatus(callType);
+    } else if (callState === 'connected') {
+      if (webrtcUIModule) webrtcUIModule.showOverlay(callType);
+    } else if (callState === 'ringing') {
+      if (webrtcUIModule) webrtcUIModule.showRingingStatus(callType);
+    }
+    // Refresh chat header to update call button states
+    if (sessionModule) sessionModule.updateChatHeader();
+  }
+
+  function onRemoteStream(stream) {
+    if (webrtcUIModule) webrtcUIModule.setRemoteVideo(stream);
+  }
+
+  function onLocalStream(stream) {
+    if (webrtcUIModule) webrtcUIModule.setLocalVideo(stream);
+  }
+
+  function onCallError(message) {
+    if (webrtcUIModule) webrtcUIModule.showError(message);
+    if (webrtcUIModule) webrtcUIModule.hideOverlay();
+    if (webrtcUIModule) webrtcUIModule.hideIncomingCallPrompt();
+    if (sessionModule) sessionModule.updateChatHeader();
+  }
+
+  function onMuteChange(isMuted) {
+    if (webrtcUIModule) webrtcUIModule.updateMuteButton(isMuted);
+  }
+
+  function onVideoToggle(isVideoOff) {
+    if (webrtcUIModule) webrtcUIModule.updateVideoButton(isVideoOff);
+  }
+
+  function onScreenShareChange(isSharing) {
+    if (webrtcUIModule) webrtcUIModule.updateScreenShareButton(isSharing);
+  }
+
+  function onCallStatusChange(text) {
+    if (webrtcUIModule) webrtcUIModule.updateStatusText(text);
   }
 
   sessionModule = sessionModuleFactory.createSessionModule({
@@ -337,7 +434,14 @@
       onMessagesRead: handleMessagesRead,
       onOnline: handleOnline,
       onConnectionStateChange: handleConnectionStateChange,
-      onLatencyUpdate: handleLatencyUpdate
+      onLatencyUpdate: handleLatencyUpdate,
+      onCallRequest: handleCallRequest,
+      onCallAccept: handleCallAccept,
+      onCallReject: handleCallReject,
+      onCallEnd: handleRemoteCallEnd,
+      onCallOffer: handleCallOffer,
+      onCallAnswer: handleCallAnswer,
+      onIceCandidate: handleIceCandidateMsg
     }
   });
 
@@ -394,6 +498,35 @@
     }
   });
 
+  // Initialize WebRTC UI module
+  webrtcUIModule = webrtcUIModuleFactory.createWebRTCUIModule({
+    callbacks: {
+      onAccept: function () {
+        if (webrtcModule) webrtcModule.acceptCall();
+      },
+      onReject: function () {
+        if (webrtcModule) webrtcModule.rejectCall('declined');
+      }
+    }
+  });
+
+  // Initialize WebRTC module
+  webrtcModule = webrtcModuleFactory.createWebRTCModule({
+    state: state,
+    wsModule: wsModule,
+    handlers: {
+      onCallStateChange: onCallStateChange,
+      onRemoteStream: onRemoteStream,
+      onLocalStream: onLocalStream,
+      onCallError: onCallError,
+      onMuteChange: onMuteChange,
+      onVideoToggle: onVideoToggle,
+      onScreenShareChange: onScreenShareChange,
+      onCallStatusChange: onCallStatusChange,
+      onIncomingCall: function () {}
+    }
+  });
+
   global.copyMyId = function copyMyId() {
     uidModule.copyMyId(state);
   };
@@ -415,6 +548,33 @@
     sessionModule.confirmRemark();
   };
   global.backToSessions = backToSessions;
+
+  global.startAudioCall = function () {
+    if (!webrtcModule || !state.current) return;
+    if (webrtcModule.isCallActive()) {
+      alert('当前正在通话中，请先挂断');
+      return;
+    }
+    webrtcModule.startCall('audio');
+  };
+
+  global.startVideoCall = function () {
+    if (!webrtcModule || !state.current) return;
+    if (webrtcModule.isCallActive()) {
+      alert('当前正在通话中，请先挂断');
+      return;
+    }
+    webrtcModule.startCall('video');
+  };
+
+  global.startScreenShare = function () {
+    if (!webrtcModule || !state.current) return;
+    if (webrtcModule.isCallActive()) {
+      alert('当前正在通话中，请先挂断');
+      return;
+    }
+    webrtcModule.startCall('screen');
+  };
 
   let updateSendButtonState;
   let autoResizeTextarea;
@@ -472,6 +632,25 @@
     render();
 
     document.getElementById('sendRequestBtn').onclick = sendRequest;
+
+    // Wire call overlay control buttons
+    var callMuteBtn = document.getElementById('callMuteBtn');
+    var callVideoBtn = document.getElementById('callVideoBtn');
+    var callScreenBtn = document.getElementById('callScreenBtn');
+    var callEndBtn = document.getElementById('callEndBtn');
+
+    if (callMuteBtn) callMuteBtn.onclick = function () { if (webrtcModule) webrtcModule.toggleMute(); };
+    if (callVideoBtn) callVideoBtn.onclick = function () { if (webrtcModule) webrtcModule.toggleVideo(); };
+    if (callScreenBtn) callScreenBtn.onclick = function () {
+      if (!webrtcModule) return;
+      var info = webrtcModule.getCallState();
+      if (info.isScreenSharing) {
+        webrtcModule.stopScreenShare();
+      } else {
+        webrtcModule.startScreenShare();
+      }
+    };
+    if (callEndBtn) callEndBtn.onclick = function () { if (webrtcModule) webrtcModule.endCall(true); };
 
     const msgInput = document.getElementById('msgInput');
     const sendBtn = document.querySelector('.send');

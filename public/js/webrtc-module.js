@@ -1,0 +1,548 @@
+(function initWebRTCModule(global) {
+  function createWebRTCModule(options) {
+    const { state, wsModule, handlers } = options;
+    const wrtc = state.webrtc;
+
+    function getIceServers() {
+      if (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.webrtc && window.__CHAT_CONFIG__.webrtc.iceServers) {
+        return window.__CHAT_CONFIG__.webrtc.iceServers;
+      }
+      return [{ urls: 'stun:stun.l.google.com:19302' }];
+    }
+
+    function createPeerConnection() {
+      const pc = new RTCPeerConnection({
+        iceServers: getIceServers(),
+        iceTransportPolicy: 'all',
+        iceCandidatePoolSize: 1
+      });
+
+      pc.onicecandidate = function (event) {
+        if (event.candidate && wrtc.callPeerId) {
+          wsModule.sendIceCandidate(wrtc.callPeerId, event.candidate.toJSON());
+        }
+      };
+
+      pc.ontrack = function (event) {
+        if (event.streams && event.streams[0]) {
+          if (!wrtc.remoteStream || wrtc.remoteStream !== event.streams[0]) {
+            wrtc.remoteStream = event.streams[0];
+            if (handlers.onRemoteStream) {
+              handlers.onRemoteStream(event.streams[0]);
+            }
+          }
+        }
+      };
+
+      pc.oniceconnectionstatechange = function () {
+        if (pc.iceConnectionState === 'failed') {
+          pc.restartIce();
+        }
+        if (pc.iceConnectionState === 'disconnected') {
+          // give it a moment to reconnect before declaring failure
+          setTimeout(function () {
+            if (pc.iceConnectionState === 'disconnected') {
+              if (handlers.onCallStatusChange) {
+                handlers.onCallStatusChange('网络不稳定，正在重连...');
+              }
+            }
+          }, 3000);
+        }
+        if (pc.iceConnectionState === 'connected') {
+          if (handlers.onCallStatusChange) {
+            handlers.onCallStatusChange('已连接');
+          }
+        }
+      };
+
+      pc.onconnectionstatechange = function () {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          endCall(true);
+        }
+      };
+
+      return pc;
+    }
+
+    function getLocalStream(callType) {
+      if (callType === 'audio') {
+        return navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: false
+        });
+      }
+
+      if (callType === 'video') {
+        return navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          }
+        });
+      }
+
+      if (callType === 'screen') {
+        return navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
+          },
+          audio: true
+        });
+      }
+
+      return Promise.reject(new Error('不支持的通话类型'));
+    }
+
+    function addLocalTracksToPC(pc, stream) {
+      stream.getTracks().forEach(function (track) {
+        pc.addTrack(track, stream);
+      });
+    }
+
+    function startCall(callType) {
+      if (wrtc.callState !== 'idle') return;
+      if (!state.current) return;
+
+      wrtc.callState = 'calling';
+      wrtc.callType = callType;
+      wrtc.callPeerId = state.current;
+      wrtc.isMuted = false;
+      wrtc.isVideoOff = false;
+      wrtc.isScreenSharing = (callType === 'screen');
+      wrtc.pendingCandidates = [];
+
+      if (handlers.onCallStateChange) {
+        handlers.onCallStateChange('calling', callType);
+      }
+
+      getLocalStream(callType).then(function (stream) {
+        wrtc.localStream = stream;
+
+        if (callType === 'screen') {
+          var videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            videoTrack.onended = function () {
+              handleScreenShareEnded();
+            };
+          }
+        }
+
+        if (handlers.onLocalStream) {
+          handlers.onLocalStream(stream);
+        }
+
+        wrtc.pc = createPeerConnection();
+        addLocalTracksToPC(wrtc.pc, stream);
+
+        wrtc.pc.createOffer().then(function (offer) {
+          return wrtc.pc.setLocalDescription(offer);
+        }).then(function () {
+          wsModule.sendCallRequest(wrtc.callPeerId, callType);
+        }).catch(function (err) {
+          handleMediaError(err);
+        });
+      }).catch(function (err) {
+        handleMediaError(err);
+      });
+    }
+
+    function handleIncomingCall(from, callType) {
+      wrtc.callState = 'ringing';
+      wrtc.callType = callType;
+      wrtc.callPeerId = from;
+      wrtc.pendingCandidates = [];
+
+      if (handlers.onIncomingCall) {
+        handlers.onIncomingCall(from, callType);
+      }
+    }
+
+    function acceptCall() {
+      if (wrtc.callState !== 'ringing') return;
+
+      wrtc.callState = 'connected';
+      wrtc.isMuted = false;
+      wrtc.isVideoOff = false;
+      wrtc.isScreenSharing = (wrtc.callType === 'screen');
+
+      if (handlers.onCallStateChange) {
+        handlers.onCallStateChange('connected', wrtc.callType);
+      }
+
+      getLocalStream(wrtc.callType).then(function (stream) {
+        wrtc.localStream = stream;
+
+        if (wrtc.callType === 'screen') {
+          var videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            videoTrack.onended = function () {
+              handleScreenShareEnded();
+            };
+          }
+        }
+
+        if (handlers.onLocalStream) {
+          handlers.onLocalStream(stream);
+        }
+
+        wrtc.pc = createPeerConnection();
+        addLocalTracksToPC(wrtc.pc, stream);
+
+        wsModule.sendCallAccept(wrtc.callPeerId);
+      }).catch(function (err) {
+        handleMediaError(err);
+      });
+    }
+
+    function rejectCall(reason) {
+      if (wrtc.callState !== 'ringing') return;
+      wsModule.sendCallReject(wrtc.callPeerId, reason || 'declined');
+      resetCallState();
+    }
+
+    function handleCallAccepted(from) {
+      if (wrtc.callState !== 'calling') return;
+      wrtc.callState = 'connected';
+      wrtc.callStartTime = Date.now();
+
+      if (handlers.onCallStateChange) {
+        handlers.onCallStateChange('connected', wrtc.callType);
+      }
+
+      wsModule.sendCallOffer(from, wrtc.pc.localDescription);
+    }
+
+    function handleCallRejected(from, reason) {
+      if (wrtc.callPeerId === from) {
+        if (handlers.onCallError) {
+          var msg = reason === 'busy' ? '对方正忙' : '对方拒绝了通话';
+          handlers.onCallError(msg);
+        }
+        endCall(false);
+      }
+    }
+
+    function handleRemoteOffer(from, sdp) {
+      if (!wrtc.pc) return;
+
+      wrtc.pc.setRemoteDescription(new RTCSessionDescription(sdp)).then(function () {
+        flushPendingCandidates();
+
+        return wrtc.pc.createAnswer();
+      }).then(function (answer) {
+        return wrtc.pc.setLocalDescription(answer);
+      }).then(function () {
+        wsModule.sendCallAnswer(from, wrtc.pc.localDescription);
+      }).catch(function (err) {
+        console.error('处理远端 Offer 失败:', err);
+      });
+    }
+
+    function handleRemoteAnswer(from, sdp) {
+      if (!wrtc.pc) return;
+      wrtc.pc.setRemoteDescription(new RTCSessionDescription(sdp)).then(function () {
+        flushPendingCandidates();
+      }).catch(function (err) {
+        console.error('处理远端 Answer 失败:', err);
+      });
+    }
+
+    function handleRemoteCandidate(from, candidate) {
+      if (!wrtc.pc) return;
+      var iceCandidate = new RTCIceCandidate(candidate);
+      if (wrtc.pc.remoteDescription && wrtc.pc.remoteDescription.type) {
+        wrtc.pc.addIceCandidate(iceCandidate).catch(function (err) {
+          console.error('添加 ICE 候选失败:', err);
+        });
+      } else {
+        wrtc.pendingCandidates.push(candidate);
+      }
+    }
+
+    function flushPendingCandidates() {
+      var pending = wrtc.pendingCandidates.splice(0);
+      pending.forEach(function (c) {
+        wrtc.pc.addIceCandidate(new RTCIceCandidate(c)).catch(function () {});
+      });
+    }
+
+    function endCall(sendSignal) {
+      if (wrtc.callState === 'idle') return;
+
+      if (sendSignal !== false && wrtc.callPeerId && wrtc.callState !== 'ringing') {
+        wsModule.sendCallEnd(wrtc.callPeerId);
+      }
+
+      cleanupMedia();
+      resetCallState();
+
+      if (handlers.onCallStateChange) {
+        handlers.onCallStateChange('idle');
+      }
+    }
+
+    function handleRemoteEndCall() {
+      if (wrtc.callState === 'idle') return;
+
+      cleanupMedia();
+      resetCallState();
+
+      if (handlers.onCallStateChange) {
+        handlers.onCallStateChange('idle');
+      }
+      if (handlers.onCallError) {
+        handlers.onCallError('对方已挂断');
+      }
+    }
+
+    function toggleMute() {
+      if (!wrtc.localStream) return;
+      wrtc.isMuted = !wrtc.isMuted;
+      wrtc.localStream.getAudioTracks().forEach(function (track) {
+        track.enabled = !wrtc.isMuted;
+      });
+      if (handlers.onMuteChange) {
+        handlers.onMuteChange(wrtc.isMuted);
+      }
+    }
+
+    function toggleVideo() {
+      if (!wrtc.localStream) return;
+      if (wrtc.callType !== 'video') return;
+      wrtc.isVideoOff = !wrtc.isVideoOff;
+      wrtc.localStream.getVideoTracks().forEach(function (track) {
+        track.enabled = !wrtc.isVideoOff;
+      });
+      if (handlers.onVideoToggle) {
+        handlers.onVideoToggle(wrtc.isVideoOff);
+      }
+    }
+
+    function startScreenShare() {
+      if (wrtc.callState !== 'connected') return;
+      if (wrtc.isScreenSharing) return;
+      if (wrtc.callType === 'screen') return;
+
+      // Turn off camera first (mutual exclusion)
+      if (wrtc.localStream && !wrtc.isVideoOff) {
+        toggleVideo();
+      }
+
+      navigator.mediaDevices.getDisplayMedia({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+        audio: true
+      }).then(function (screenStream) {
+        wrtc.screenStream = screenStream;
+        wrtc.isScreenSharing = true;
+
+        var screenVideoTrack = screenStream.getVideoTracks()[0];
+        if (screenVideoTrack) {
+          screenVideoTrack.onended = function () {
+            handleScreenShareEnded();
+          };
+        }
+
+        var sender = wrtc.pc.getSenders().find(function (s) {
+          return s.track && s.track.kind === 'video';
+        });
+
+        if (sender && screenVideoTrack) {
+          sender.replaceTrack(screenVideoTrack).catch(function () {});
+        } else if (screenVideoTrack) {
+          wrtc.pc.addTrack(screenVideoTrack, screenStream);
+        }
+
+        var audioTrack = screenStream.getAudioTracks()[0];
+        if (audioTrack) {
+          var audioSender = wrtc.pc.getSenders().find(function (s) {
+            return s.track && s.track.kind === 'audio';
+          });
+          if (audioSender) {
+            audioSender.replaceTrack(audioTrack).catch(function () {});
+          }
+        }
+
+        renegotiate();
+
+        if (handlers.onScreenShareChange) {
+          handlers.onScreenShareChange(true);
+        }
+      }).catch(function (err) {
+        console.error('屏幕共享失败:', err);
+        if (handlers.onCallError) {
+          handlers.onCallError('屏幕共享开启失败');
+        }
+      });
+    }
+
+    function stopScreenShare() {
+      if (!wrtc.screenStream) return;
+
+      wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
+      wrtc.screenStream = null;
+      wrtc.isScreenSharing = false;
+
+      if (wrtc.callType === 'video') {
+        // Restore camera - user needs to manually re-enable
+        wrtc.isVideoOff = true;
+        if (handlers.onVideoToggle) {
+          handlers.onVideoToggle(true);
+        }
+      }
+
+      renegotiate();
+
+      if (handlers.onScreenShareChange) {
+        handlers.onScreenShareChange(false);
+      }
+    }
+
+    function handleScreenShareEnded() {
+      if (wrtc.screenStream) {
+        wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
+        wrtc.screenStream = null;
+      }
+      wrtc.isScreenSharing = false;
+
+      if (handlers.onScreenShareChange) {
+        handlers.onScreenShareChange(false);
+      }
+
+      if (wrtc.callType === 'screen') {
+        // Screen share call: fall back to audio only
+        if (handlers.onCallError) {
+          handlers.onCallError('屏幕共享已停止，已切换为纯语音通话');
+        }
+      } else {
+        // Video call: user stopped share, restore camera possibility
+        wrtc.isVideoOff = true;
+        if (handlers.onVideoToggle) {
+          handlers.onVideoToggle(true);
+        }
+      }
+
+      renegotiate();
+    }
+
+    function renegotiate() {
+      if (!wrtc.pc) return;
+      wrtc.pc.createOffer().then(function (offer) {
+        return wrtc.pc.setLocalDescription(offer);
+      }).then(function () {
+        if (wrtc.callPeerId) {
+          wsModule.sendCallOffer(wrtc.callPeerId, wrtc.pc.localDescription);
+        }
+      }).catch(function (err) {
+        console.error('重协商失败:', err);
+      });
+    }
+
+    function handleMediaError(err) {
+      console.error('媒体采集失败:', err);
+
+      var message = '媒体设备访问失败';
+      if (err.name === 'NotAllowedError') {
+        message = '请授予麦克风/摄像头权限以进行通话';
+      } else if (err.name === 'NotFoundError') {
+        message = '未检测到麦克风或摄像头设备';
+      } else if (err.name === 'NotReadableError') {
+        message = '媒体设备被其他应用占用';
+      }
+
+      if (handlers.onCallError) {
+        handlers.onCallError(message);
+      }
+
+      if (wrtc.callState === 'ringing') {
+        wsModule.sendCallReject(wrtc.callPeerId, 'error');
+      }
+
+      cleanupMedia();
+      resetCallState();
+
+      if (handlers.onCallStateChange) {
+        handlers.onCallStateChange('idle');
+      }
+    }
+
+    function cleanupMedia() {
+      if (wrtc.localStream) {
+        wrtc.localStream.getTracks().forEach(function (t) { t.stop(); });
+        wrtc.localStream = null;
+      }
+      if (wrtc.screenStream) {
+        wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
+        wrtc.screenStream = null;
+      }
+      if (wrtc.remoteStream) {
+        wrtc.remoteStream = null;
+      }
+      if (wrtc.pc) {
+        wrtc.pc.close();
+        wrtc.pc = null;
+      }
+    }
+
+    function resetCallState() {
+      wrtc.callState = 'idle';
+      wrtc.callType = null;
+      wrtc.callPeerId = null;
+      wrtc.callStartTime = null;
+      wrtc.isMuted = false;
+      wrtc.isVideoOff = false;
+      wrtc.isScreenSharing = false;
+      wrtc.pendingCandidates = [];
+    }
+
+    function getCallState() {
+      return {
+        callState: wrtc.callState,
+        callType: wrtc.callType,
+        callPeerId: wrtc.callPeerId,
+        isMuted: wrtc.isMuted,
+        isVideoOff: wrtc.isVideoOff,
+        isScreenSharing: wrtc.isScreenSharing
+      };
+    }
+
+    function isCallActive() {
+      return wrtc.callState !== 'idle';
+    }
+
+    return {
+      startCall: startCall,
+      acceptCall: acceptCall,
+      rejectCall: rejectCall,
+      endCall: endCall,
+      toggleMute: toggleMute,
+      toggleVideo: toggleVideo,
+      startScreenShare: startScreenShare,
+      stopScreenShare: stopScreenShare,
+      handleIncomingCall: handleIncomingCall,
+      handleCallAccepted: handleCallAccepted,
+      handleCallRejected: handleCallRejected,
+      handleRemoteOffer: handleRemoteOffer,
+      handleRemoteAnswer: handleRemoteAnswer,
+      handleRemoteCandidate: handleRemoteCandidate,
+      handleRemoteEndCall: handleRemoteEndCall,
+      getCallState: getCallState,
+      isCallActive: isCallActive
+    };
+  }
+
+  global.ChatWebRTCModule = {
+    createWebRTCModule: createWebRTCModule
+  };
+})(window);

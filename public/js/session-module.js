@@ -18,6 +18,7 @@
         ? `(${state.remarks[state.current]}) ${state.current}`
         : state.current;
 
+      const isInCall = state.webrtc && state.webrtc.callState !== 'idle';
       document.getElementById('title').innerHTML = `
         <button class="back-btn" onclick="backToSessions()" title="返回">
           <i class="fa-solid fa-chevron-left"></i>
@@ -29,9 +30,19 @@
           border-radius:50%;
           background:${dotColor};
           display:inline-block;
-          margin-left:auto;
           flex-shrink:0;
         "></span>
+        <div class="chat-header-call-actions">
+          <button class="call-btn ${isInCall && state.webrtc.callType === 'audio' ? 'active-call' : ''}" onclick="startAudioCall()" title="语音通话" ${isInCall ? 'disabled' : ''}>
+            <i class="fa-solid fa-phone"></i>
+          </button>
+          <button class="call-btn ${isInCall && state.webrtc.callType === 'video' ? 'active-call' : ''}" onclick="startVideoCall()" title="视频通话" ${isInCall ? 'disabled' : ''}>
+            <i class="fa-solid fa-video"></i>
+          </button>
+          <button class="call-btn ${isInCall && state.webrtc.callType === 'screen' ? 'active-call' : ''}" onclick="startScreenShare()" title="屏幕共享" ${isInCall ? 'disabled' : ''}>
+            <i class="fa-solid fa-desktop"></i>
+          </button>
+        </div>
       `;
     }
 
