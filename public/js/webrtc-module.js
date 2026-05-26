@@ -112,9 +112,11 @@
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
             video: false
           }).then(function(micStream) {
-            micStream.getAudioTracks().forEach(function(track) {
-              screenStream.addTrack(track);
-            });
+            var micTrack = micStream.getAudioTracks()[0];
+            if (micTrack) {
+              wrtc.micAudioTrack = micTrack;
+              screenStream.addTrack(micTrack);
+            }
             return screenStream;
           });
         });
@@ -332,9 +334,16 @@
     function toggleMute() {
       if (!wrtc.localStream) return;
       wrtc.isMuted = !wrtc.isMuted;
-      wrtc.localStream.getAudioTracks().forEach(function (track) {
-        track.enabled = !wrtc.isMuted;
-      });
+
+      // For screen calls, only mute the microphone; system audio stays unmuted
+      if (wrtc.callType === 'screen' && wrtc.micAudioTrack) {
+        wrtc.micAudioTrack.enabled = !wrtc.isMuted;
+      } else {
+        wrtc.localStream.getAudioTracks().forEach(function (track) {
+          track.enabled = !wrtc.isMuted;
+        });
+      }
+
       if (handlers.onMuteChange) {
         handlers.onMuteChange(wrtc.isMuted);
       }
@@ -608,6 +617,7 @@
 
     function cleanupMedia() {
       stopConnectionStats();
+      wrtc.micAudioTrack = null;
       if (wrtc.localStream) {
         wrtc.localStream.getTracks().forEach(function (t) { t.stop(); });
         wrtc.localStream = null;
@@ -634,6 +644,7 @@
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = false;
       wrtc.pendingCandidates = [];
+      wrtc.micAudioTrack = null;
     }
 
     function getCallState() {
