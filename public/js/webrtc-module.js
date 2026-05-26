@@ -180,27 +180,19 @@
     function acceptCall() {
       if (wrtc.callState !== 'ringing') return;
 
-      wrtc.callState = 'connected';
-      wrtc.isMuted = false;
-      wrtc.isVideoOff = false;
-      wrtc.isScreenSharing = (wrtc.callType === 'screen');
-      startConnectionStats();
-
-      if (handlers.onCallStateChange) {
-        handlers.onCallStateChange('connected', wrtc.callType);
+      // Screen share is one-way: callee only needs audio, caller shares screen
+      var streamPromise;
+      if (wrtc.callType === 'screen') {
+        streamPromise = navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false
+        });
+      } else {
+        streamPromise = getLocalStream(wrtc.callType);
       }
 
-      getLocalStream(wrtc.callType).then(function (stream) {
+      streamPromise.then(function (stream) {
         wrtc.localStream = stream;
-
-        if (wrtc.callType === 'screen') {
-          var videoTrack = stream.getVideoTracks()[0];
-          if (videoTrack) {
-            videoTrack.onended = function () {
-              handleScreenShareEnded();
-            };
-          }
-        }
 
         if (handlers.onLocalStream) {
           handlers.onLocalStream(stream);
@@ -208,6 +200,16 @@
 
         wrtc.pc = createPeerConnection();
         addLocalTracksToPC(wrtc.pc, stream);
+
+        wrtc.callState = 'connected';
+        wrtc.isMuted = false;
+        wrtc.isVideoOff = (wrtc.callType !== 'screen');
+        wrtc.isScreenSharing = false;
+        startConnectionStats();
+
+        if (handlers.onCallStateChange) {
+          handlers.onCallStateChange('connected', wrtc.callType);
+        }
 
         wsModule.sendCallAccept(wrtc.callPeerId);
       }).catch(function (err) {
@@ -420,10 +422,22 @@
     }
 
     function handleScreenShareEnded() {
+      // Screen stream from startScreenShare (during active video call)
       if (wrtc.screenStream) {
         wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
         wrtc.screenStream = null;
       }
+
+      // Screen stream from startCall('screen') — stored in localStream
+      // The video track is already ended by the browser; remove it from PC
+      if (wrtc.localStream && wrtc.callType === 'screen') {
+        wrtc.localStream.getVideoTracks().forEach(function (t) {
+          // Track already ended by browser, just ensure it's stopped
+          if (t.readyState !== 'ended') { t.stop(); }
+        });
+        // Keep audio track alive for continued voice chat
+      }
+
       wrtc.isScreenSharing = false;
 
       if (handlers.onScreenShareChange) {
@@ -431,12 +445,10 @@
       }
 
       if (wrtc.callType === 'screen') {
-        // Screen share call: fall back to audio only
         if (handlers.onCallError) {
           handlers.onCallError('屏幕共享已停止，已切换为纯语音通话');
         }
       } else {
-        // Video call: user stopped share, restore camera possibility
         wrtc.isVideoOff = true;
         if (handlers.onVideoToggle) {
           handlers.onVideoToggle(true);
