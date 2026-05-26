@@ -29,7 +29,7 @@
       var screenBtn = document.getElementById('callScreenBtn');
 
       if (remoteVideo) remoteVideo.style.display = isVideo ? 'block' : 'none';
-      if (localVideo) localVideo.style.display = (callType === 'video' || callType === 'screen') ? 'block' : 'none';
+      if (localVideo) localVideo.style.display = (callType === 'video') ? 'block' : 'none';
 
       if (videoBtn) {
         videoBtn.style.display = callType === 'video' ? 'flex' : 'none';
@@ -100,6 +100,7 @@
       var video = document.getElementById('localVideo');
       if (video) {
         video.srcObject = stream;
+        video.style.display = (stream.getVideoTracks().length > 0) ? 'block' : 'none';
       }
     }
 
