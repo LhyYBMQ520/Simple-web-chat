@@ -124,8 +124,8 @@ export function handleIceCandidate(deps: SignalingDeps, uid: string, msg: { to: 
   let protocol = '';
   if (msg.candidate && typeof msg.candidate === 'object') {
     const c = msg.candidate as Record<string, unknown>;
-    candType = typeof c.type === 'string' ? c.type : 'unknown';
-    protocol = typeof c.protocol === 'string' ? c.protocol : '';
+    candType = typeof c.candidateType === 'string' ? c.candidateType : 'unknown';
+    protocol = typeof c.protocol === 'string' ? c.protocol.toLowerCase() : '';
   }
 
   // Log first few ICE candidates, then only periodically

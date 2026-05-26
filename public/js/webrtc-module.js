@@ -19,7 +19,15 @@
 
       pc.onicecandidate = function (event) {
         if (event.candidate && wrtc.callPeerId) {
-          wsModule.sendIceCandidate(wrtc.callPeerId, event.candidate.toJSON());
+          var cand = event.candidate.toJSON();
+          // Parse candidate type and protocol from the candidate string
+          // Format: "candidate:<foundation> <component> <protocol> <priority> <ip> <port> typ <type> ..."
+          var candStr = event.candidate.candidate || '';
+          var typMatch = candStr.match(/\btyp\s+(\S+)/i);
+          var protoMatch = candStr.match(/^\S+\s+\S+\s+(\S+)/);
+          if (typMatch) { cand.candidateType = typMatch[1]; }
+          if (protoMatch) { cand.protocol = protoMatch[1]; }
+          wsModule.sendIceCandidate(wrtc.callPeerId, cand);
         }
       };
 
