@@ -316,8 +316,11 @@ Simple-web-chat/
 4. 客户端发送 `file_message` WebSocket 消息通知接收方
 
 **下载**
+
 5. 接收方点击文件卡片，发起 `GET /api/download?key=...&name=...`（同源请求）
+
 6. 后端生成带 `response-content-disposition` 的 R2 预签名 GET URL，返回 307 Redirect
+
 7. 浏览器跟随重定向直连 R2 下载，R2 返回文件流 + 正确文件名
 
 ```javascript
@@ -394,7 +397,6 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 ## 📅 未来计划
 
 - [ ] 添加端到端加密与隐私保护功能（我也要死吗.png）
-- [x] 支持文件和图片传输（Cloudflare R2 对象存储）
 - [ ] 实现群组聊天功能
 - [ ] 添加消息搜索与过滤
 - [ ] 实现对方状态显示（如输入中。。。）
