@@ -23,11 +23,12 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天应用。用�
 - **🖼️ 图片与文件传输**：支持发送图片（点击灯箱放大预览）和文件，通过 Cloudflare R2 对象存储直传，不占用 VPS 带宽和磁盘
 - **📶 连接状态与延迟**：会话列表标题右侧实时显示与服务器连接状态及网络延迟
 - **📱 响应式设计**：完美支持桌面端和移动端的屏幕比例（尽量吧。。。移动端的不确定性太多了）
+- **📞 音视频通话**：基于 WebRTC 的实时语音通话、视频通话和屏幕共享（带语音），支持静音、摄像头开关、连接模式显示（LAN/P2P/UDP中继/TCP中继）及 RTT 延迟
 - **⚙️ 零配置**：开箱即用，无需复杂配置
 
 ## 🛠️ 技术栈
 
-- **前端**：HTML5、CSS3、JavaScript、WebSocket
+- **前端**：HTML5、CSS3、JavaScript、WebSocket、WebRTC
 - **后端**：Node.js、TypeScript、Express、WebSocket (ws)
 - **运行时**：tsx（TypeScript 直接运行，无需预编译）
 - **数据库**：SQLite3 (better-sqlite3)
@@ -103,6 +104,11 @@ STORAGE_PUBLIC_URL=https://cdn.yourdomain.com  # 自定义域名需绑定到存�
 STORAGE_REGION=auto
 MAX_FILE_SIZE=10485760
 UPLOAD_URL_EXPIRY=300
+
+# === WebRTC TURN 中继（可选，不配置则仅支持局域网/P2P，STUN默认为 Google 公共 STUN 服务） ===
+TURN_SERVER_URLS=turn:your-coturn-server.com:3478?transport=udp;turn:your-coturn-server.com:3478?transport=tcp
+TURN_USERNAME=your-username
+TURN_CREDENTIAL=your-password
 ```
 
 > **获取 R2 凭据**：Cloudflare 控制台 → R2 → 创建存储桶 → 管理 API 令牌。Access Key 和 Secret Key 在 API 令牌页面获取。
@@ -211,6 +217,7 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 - **连接状态显示**：在“会话列表”标题右侧显示连接中/重连中/已断开/已连接等状态图标
 - **连接延迟显示**：已连接时显示与服务器的实时延迟（ms）
 - **ID 有效期**：ID 有 24 小时有效期，过期后会自动生成新 ID，相当于每个会话的有效期为 24 小时
+- **通话功能**：会话 header 右侧三个按钮分别发起语音通话、视频通话和屏幕共享（安卓端暂未适配）；通话中使用悬浮窗控制按钮进行静音（屏幕共享时仅关闭麦克风）、开关摄像头、挂断等操作；屏幕共享为单向模式（发起方共享屏幕 + 语音，接收方仅语音）；连接信息区显示当前 ICE 连接模式和 RTT 延迟
 
 ## 📁 项目结构
 
@@ -225,13 +232,15 @@ Simple-web-chat/
 ├── db/                      # 会话数据库存储文件夹（自动生成）
 ├── src/                     # 后端模块目录
 │   ├── config/
-│   │   └── constants.ts     # 后端常量配置（含 dotenv 加载）
+│   │   ├── constants.ts     # 后端常量配置（含 dotenv 加载）
+│   │   └── webrtc-config.ts # STUN/TURN ICE 服务器配置
 │   ├── services/
 │   │   ├── session-db-service.ts  # 会话数据库与消息持久化服务
 │   │   ├── uid-service.ts   # UID 生命周期服务
 │   │   └── storage-service.ts    # 对象存储服务（R2/S3 预签名 URL）
 │   └── ws/
-│       └── connection-handler.ts   # WebSocket 消息处理器
+│       ├── connection-handler.ts   # WebSocket 消息处理器（含信令分发）
+│       └── signaling-handler.ts    # WebRTC 信令转发 handler
 └── public/                  # 前端静态资源
     ├── index.html          # 主页 HTML
     ├── css/
@@ -243,6 +252,8 @@ Simple-web-chat/
 │   │   ├── session-module.js  # 会话与备注管理模块
 │   │   ├── ws-module.js    # WebSocket 通信与延迟检测模块
 │   │   ├── file-upload-module.js  # 文件上传（预签名 + 直传 + 大小校验）
+│   │   ├── webrtc-module.js    # WebRTC 核心（PeerConnection/媒体采集/信令）
+│   │   ├── webrtc-ui-module.js # WebRTC 通话 UI（悬浮窗/控制按钮/来电提示）
    │   ├── emoji-data.js       # 表情数据包（含中文名称和搜索索引）
    │   ├── emoji-module.js     # 表情选择器 UI 模块
    │   └── script.js       # 前端入口与模块装配
@@ -266,7 +277,8 @@ Simple-web-chat/
 - **会话数据库独立存储**：每个会话维度拥有独立数据库文件，存放在 `/db` 目录，file 命名规则为 `uid1,uid2.db`（排序避免重复）
 - **对象存储服务**：支持 Cloudflare R2 / S3 兼容存储，提供预签名上传 URL、带 `response-content-disposition` 的预签名下载 URL（307 重定向，不经过 VPS 中转文件流量）、文件删除
 - **文件上传校验**：前后端双重校验文件大小，限制值由 `MAX_FILE_SIZE` 环境变量统一控制，通过 `/js/config.js` 动态注入前端
-- **动态前端配置**：`/js/config.js` 由服务端动态生成，向浏览器注入 `MAX_FILE_SIZE` 等后端配置
+- **动态前端配置**：`/js/config.js` 由服务端动态生成，向浏览器注入 `MAX_FILE_SIZE`、WebRTC ICE 服务器等后端配置
+- **WebRTC 信令转发**：支持 7 种信令消息类型（callRequest/callAccept/callReject/callEnd/callOffer/callAnswer/iceCandidate），服务端纯转发 + 详细日志（ICE 候选类型/协议、SDP 协商阶段）
 
 ### 前端实现
 
@@ -284,6 +296,7 @@ Simple-web-chat/
 - **UID 状态显示**：实时显示 UID 剩余有效期，即将过期时带有警告标识
 - **输入框交互**：桌面 Enter 发送 / 移动端 Enter 换行；粘贴保留原始换行格式；自动高度扩展；空内容禁用发送；表情面板支持搜索和分类；引用回复支持
 - **文件上传**：支持图片和文件上传，预签名 URL 直传 R2；前端预检文件大小、类型，超限直接拦截；未知类型自动 fallback `application/octet-stream`；上传期间切换会话不会发错目标（入口捕获 targetId）
+- **WebRTC 通话**：语音/视频/屏幕共享三种通话模式；通话悬浮窗含远程视频 + 本地 PIP 小窗；静音/摄像头/屏幕共享控制按钮；ICE 连接模式 + RTT 延迟实时显示；通话中移动端旋转不触发页面刷新
 
 ## 📊 数据库设计
 
@@ -392,6 +405,23 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 
 // 在线用户列表
 {type: "online", list: ["user1", "user2", ...]}
+
+// === WebRTC 信令消息（服务端纯转发，附加 from 字段） ===
+
+// 发起通话
+{type: "callRequest", to: "peerUID", callType: "audio|video|screen"}
+
+// 接受/拒绝/挂断
+{type: "callAccept", from: "peerUID"}
+{type: "callReject", from: "peerUID", reason: "busy|declined|error"}
+{type: "callEnd", to: "peerUID"}
+
+// SDP 交换
+{type: "callOffer", to: "peerUID", sdp: {type: "offer", sdp: "..."}}
+{type: "callAnswer", to: "peerUID", sdp: {type: "answer", sdp: "..."}}
+
+// ICE 候选（含 candidateType/protocol 解析）
+{type: "iceCandidate", to: "peerUID", candidate: {candidate: "...", sdpMid: "...", sdpMLineIndex: 0, candidateType: "host|srflx|relay", protocol: "udp|tcp"}}
 ```
 
 ## 📅 未来计划
@@ -401,7 +431,7 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 - [ ] 添加消息搜索与过滤
 - [ ] 实现对方状态显示（如输入中。。。）
 - [ ] 深色主题适配
-- [ ] 尝试添加语音通话，屏幕共享功能
+- [x] 尝试添加语音通话，屏幕共享功能 （几乎完成了，剩下的仅有测试+修复bug和优化使用体验）
 
 ## 🔒 安全性说明
 
