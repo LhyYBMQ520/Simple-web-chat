@@ -845,6 +845,9 @@
 
     let lastIsMobile = window.innerWidth <= 768;
     window.addEventListener('resize', () => {
+      // 通话中禁止刷新，避免 WebRTC 连接中断
+      if (webrtcModule && webrtcModule.isCallActive()) return;
+
       const isMobile = window.innerWidth <= 768;
       if (lastIsMobile !== isMobile) {
         lastIsMobile = isMobile;
