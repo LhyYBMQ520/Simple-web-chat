@@ -29,10 +29,10 @@
       var screenBtn = document.getElementById('callScreenBtn');
 
       if (remoteVideo) remoteVideo.style.display = isVideo ? 'block' : 'none';
-      if (localVideo) localVideo.style.display = callType === 'video' ? 'block' : 'none';
+      if (localVideo) localVideo.style.display = (callType === 'video' || callType === 'screen') ? 'block' : 'none';
 
       if (videoBtn) {
-        videoBtn.style.display = (callType === 'video' || callType === 'screen') ? 'flex' : 'none';
+        videoBtn.style.display = callType === 'video' ? 'flex' : 'none';
       }
       if (screenBtn) {
         screenBtn.style.display = 'none';
