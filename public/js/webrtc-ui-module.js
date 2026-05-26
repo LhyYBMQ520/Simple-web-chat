@@ -227,6 +227,22 @@
       alert(message);
     }
 
+    function updateConnectionInfo(modeLabel, modeClass, rttMs) {
+      var el = document.getElementById('callConnInfo');
+      if (!el) return;
+      el.style.display = 'flex';
+      var html = '<span class="call-conn-mode ' + modeClass + '">' + modeLabel + '</span>';
+      if (typeof rttMs === 'number' && rttMs >= 0) {
+        html += '<span>' + rttMs + 'ms</span>';
+      }
+      el.innerHTML = html;
+    }
+
+    function hideConnectionInfo() {
+      var el = document.getElementById('callConnInfo');
+      if (el) el.style.display = 'none';
+    }
+
     return {
       showOverlay: showOverlay,
       hideOverlay: hideOverlay,
@@ -240,7 +256,9 @@
       hideIncomingCallPrompt: hideIncomingCallPrompt,
       showCallingStatus: showCallingStatus,
       showRingingStatus: showRingingStatus,
-      showError: showError
+      showError: showError,
+      updateConnectionInfo: updateConnectionInfo,
+      hideConnectionInfo: hideConnectionInfo
     };
   }
 

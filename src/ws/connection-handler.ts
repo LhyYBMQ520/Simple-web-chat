@@ -10,7 +10,8 @@ import {
   handleCallEnd,
   handleCallOffer,
   handleCallAnswer,
-  handleIceCandidate
+  handleIceCandidate,
+  cleanupCallTracking
 } from './signaling-handler.js';
 
 export interface ClientInfo {
@@ -507,6 +508,7 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
 
       if (uid && clients.get(uid)?.ws === ws) {
         clients.delete(uid);
+        cleanupCallTracking(uid, clients);
         broadcastOnline();
       }
     });

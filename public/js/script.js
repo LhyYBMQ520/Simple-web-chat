@@ -402,6 +402,15 @@
     if (webrtcUIModule) webrtcUIModule.updateStatusText(text);
   }
 
+  function onConnectionInfo(modeLabel, modeClass, rtt) {
+    if (!webrtcUIModule) return;
+    if (!modeLabel) {
+      webrtcUIModule.hideConnectionInfo();
+      return;
+    }
+    webrtcUIModule.updateConnectionInfo(modeLabel, modeClass, rtt);
+  }
+
   sessionModule = sessionModuleFactory.createSessionModule({
     state,
     onSelect: select,
@@ -523,6 +532,7 @@
       onVideoToggle: onVideoToggle,
       onScreenShareChange: onScreenShareChange,
       onCallStatusChange: onCallStatusChange,
+      onConnectionInfo: onConnectionInfo,
       onIncomingCall: function () {}
     }
   });

@@ -176,6 +176,7 @@
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = (wrtc.callType === 'screen');
+      startConnectionStats();
 
       if (handlers.onCallStateChange) {
         handlers.onCallStateChange('connected', wrtc.callType);
@@ -216,6 +217,7 @@
       if (wrtc.callState !== 'calling') return;
       wrtc.callState = 'connected';
       wrtc.callStartTime = Date.now();
+      startConnectionStats();
 
       if (handlers.onCallStateChange) {
         handlers.onCallStateChange('connected', wrtc.callType);
@@ -449,6 +451,103 @@
       });
     }
 
+    // === Connection stats polling ===
+    var statsTimer = null;
+    var lastModeLabel = '';
+    var lastModeClass = '';
+
+    function startConnectionStats() {
+      stopConnectionStats();
+      lastModeLabel = '';
+      lastModeClass = '';
+      pollConnectionStats();
+      statsTimer = setInterval(pollConnectionStats, 3000);
+    }
+
+    function stopConnectionStats() {
+      if (statsTimer) {
+        clearInterval(statsTimer);
+        statsTimer = null;
+      }
+      if (handlers.onConnectionInfo) {
+        handlers.onConnectionInfo(null, '', null);
+      }
+    }
+
+    function pollConnectionStats() {
+      if (!wrtc.pc || wrtc.callState !== 'connected') return;
+
+      wrtc.pc.getStats(null).then(function (report) {
+        var selectedPair = null;
+        var localCandidate = null;
+
+        report.forEach(function (stat) {
+          if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && stat.nominated) {
+            selectedPair = stat;
+          }
+        });
+        // Fallback: use any succeeded pair
+        if (!selectedPair) {
+          report.forEach(function (stat) {
+            if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && !selectedPair) {
+              selectedPair = stat;
+            }
+          });
+        }
+
+        if (selectedPair && selectedPair.localCandidateId) {
+          var localCand = report.get(selectedPair.localCandidateId);
+          if (localCand) {
+            localCandidate = localCand;
+          }
+        }
+
+        if (selectedPair && localCandidate) {
+          var candType = localCandidate.candidateType || 'unknown';
+          var protocol = (localCandidate.protocol || 'udp').toLowerCase();
+
+          var modeLabel = '';
+          var modeClass = '';
+
+          if (candType === 'host') {
+            modeLabel = 'LAN 直连';
+            modeClass = 'host';
+          } else if (candType === 'srflx' || candType === 'prflx') {
+            modeLabel = 'P2P 直连';
+            modeClass = 'srflx';
+          } else if (candType === 'relay') {
+            if (protocol === 'tcp' || protocol === 'tcp-act' || protocol === 'tcp-pass') {
+              modeLabel = 'TCP 中继';
+              modeClass = 'relay-tcp';
+            } else {
+              modeLabel = 'UDP 中继';
+              modeClass = 'relay-udp';
+            }
+          } else {
+            modeLabel = candType + '/' + protocol;
+            modeClass = 'host';
+          }
+
+          var rtt = null;
+          if (typeof selectedPair.currentRoundTripTime === 'number' && selectedPair.currentRoundTripTime > 0) {
+            rtt = Math.round(selectedPair.currentRoundTripTime * 1000);
+          }
+
+          // Log mode transitions
+          if (modeLabel !== lastModeLabel || modeClass !== lastModeClass) {
+            var prevLabel = lastModeLabel || '初始连接';
+            console.log('[连接模式切换] ' + prevLabel + ' -> ' + modeLabel + (rtt !== null ? ' | RTT: ' + rtt + 'ms' : ''));
+            lastModeLabel = modeLabel;
+            lastModeClass = modeClass;
+          }
+
+          if (handlers.onConnectionInfo) {
+            handlers.onConnectionInfo(modeLabel, modeClass, rtt);
+          }
+        }
+      }).catch(function () {});
+    }
+
     function handleMediaError(err) {
       console.error('媒体采集失败:', err);
 
@@ -478,6 +577,7 @@
     }
 
     function cleanupMedia() {
+      stopConnectionStats();
       if (wrtc.localStream) {
         wrtc.localStream.getTracks().forEach(function (t) { t.stop(); });
         wrtc.localStream = null;
