@@ -17,6 +17,7 @@ export interface IceServerConfig {
   urls: string | string[];
   username?: string;
   credential?: string;
+  credentialType?: string;
 }
 
 export function getIceServers(): IceServerConfig[] {

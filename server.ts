@@ -2,12 +2,14 @@ import express from 'express';
 import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 
-import { PORT, PUBLIC_DIR, MAX_FILE_SIZE } from './src/config/constants.js';
+import crypto from 'node:crypto';
+import { PORT, PUBLIC_DIR, MAX_FILE_SIZE, TURN_RELAY_ENABLED, TURN_RELAY_PORT, TURN_RELAY_PUBLIC_IP, TURN_RELAY_SECRET } from './src/config/constants.js';
 import { getIceServers } from './src/config/webrtc-config.js';
 import { createUIDService } from './src/services/uid-service.js';
 import { createSessionDBService } from './src/services/session-db-service.js';
 import { createStorageService } from './src/services/storage-service.js';
 import { createConnectionHandler, type ClientInfo } from './src/ws/connection-handler.js';
+import { startTURNServer, getTURNRelayInfo, stopTURNServer, type TURNRelayInfo } from './src/services/turn-relay.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -16,11 +18,21 @@ app.use(express.json());
 
 // 向前端注入服务端配置
 app.get('/js/config.js', (_req, res) => {
+  const iceServers = getIceServers();
+  const relay = getTURNRelayInfo();
+  if (relay) {
+    iceServers.push({
+      urls: relay.urls,
+      username: relay.username,
+      credential: relay.credential,
+      credentialType: 'password',
+    });
+  }
   res.type('application/javascript');
   res.send(
     `window.__CHAT_CONFIG__ = {` +
     `  maxFileSize: ${MAX_FILE_SIZE},` +
-    `  webrtc: { iceServers: ${JSON.stringify(getIceServers())} }` +
+    `  webrtc: { iceServers: ${JSON.stringify(iceServers)} }` +
     `};`
   );
 });
@@ -139,11 +151,37 @@ server.listen(PORT, () => {
   const hasTurn = iceServers.some(s => 'username' in s);
   console.log(`[WebRTC] STUN 服务器: ${iceServers.filter(s => !('username' in s)).length} 个`);
   console.log(`[WebRTC] TURN 服务器: ${hasTurn ? '已配置' : '未配置（仅 STUN 直连）'}`);
+
+  // 启动内建 TURN 中继服务
+  if (TURN_RELAY_ENABLED) {
+    const relayPort = TURN_RELAY_PORT || 0;
+    const relaySecret = TURN_RELAY_SECRET || crypto.randomBytes(32).toString('hex');
+    const relayConfig = {
+      port: relayPort,
+      publicIp: TURN_RELAY_PUBLIC_IP || undefined,
+      realm: 'simple-web-chat',
+      secret: relaySecret,
+      allocationLifetime: 600,
+    };
+
+    if (startTURNServer(relayConfig)) {
+      const relayInfo = getTURNRelayInfo();
+      if (relayInfo) {
+        console.log(`[WebRTC] 内建 TURN 中继: ${relayInfo.urls.join(', ')}`);
+        console.log(`[WebRTC] 中继 username: ${relayInfo.username}`);
+      }
+    } else {
+      console.log(`[WebRTC] 内建 TURN 中继启动失败 — 仅 STUN 直连`);
+    }
+  } else {
+    console.log(`[WebRTC] 内建 TURN 中继已禁用`);
+  }
 });
 
 function closeResources(): void {
   clearInterval(cleanupTimer);
   dbService.closeAllSessionDBs();
+  stopTURNServer();
 }
 
 process.on('exit', () => {

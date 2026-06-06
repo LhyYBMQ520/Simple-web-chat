@@ -35,3 +35,9 @@ export const UPLOAD_URL_EXPIRY = parseInt(process.env.UPLOAD_URL_EXPIRY || '300'
 export const TURN_SERVER_URLS = process.env.TURN_SERVER_URLS || '';
 export const TURN_USERNAME = process.env.TURN_USERNAME || '';
 export const TURN_CREDENTIAL = process.env.TURN_CREDENTIAL || '';
+
+// 内建 TURN 中继服务配置
+export const TURN_RELAY_ENABLED = process.env.TURN_RELAY_ENABLED !== 'false';
+export const TURN_RELAY_PORT = parseInt(process.env.TURN_RELAY_PORT || '0', 10) || 0;
+export const TURN_RELAY_PUBLIC_IP = process.env.TURN_RELAY_PUBLIC_IP || '';
+export const TURN_RELAY_SECRET = process.env.TURN_RELAY_SECRET || '';
