@@ -20,6 +20,8 @@
       pc.onicecandidate = function (event) {
         if (event.candidate && wrtc.callPeerId) {
           var cand = event.candidate.toJSON();
+          // Parse candidate type and protocol from the candidate string
+          // Format: "candidate:<foundation> <component> <protocol> <priority> <ip> <port> typ <type> ..."
           var candStr = event.candidate.candidate || '';
           var typMatch = candStr.match(/\btyp\s+(\S+)/i);
           var protoMatch = candStr.match(/^\S+\s+\S+\s+(\S+)/);
@@ -42,27 +44,19 @@
 
       pc.oniceconnectionstatechange = function () {
         if (pc.iceConnectionState === 'failed') {
-          // First failure: restart ICE to try relay candidates
-          if (wrtc.iceRestartCount < 1) {
-            wrtc.iceRestartCount++;
-            if (handlers.onCallStatusChange) {
-              handlers.onCallStatusChange('正在尝试中继连接...');
-            }
-            pc.restartIce();
-            return;
-          }
+          pc.restartIce();
         }
         if (pc.iceConnectionState === 'disconnected') {
+          // give it a moment to reconnect before declaring failure
           setTimeout(function () {
-            if (pc && pc.iceConnectionState === 'disconnected') {
+            if (pc.iceConnectionState === 'disconnected') {
               if (handlers.onCallStatusChange) {
                 handlers.onCallStatusChange('网络不稳定，正在重连...');
               }
             }
           }, 3000);
         }
-        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-          wrtc.iceRestartCount = 0;
+        if (pc.iceConnectionState === 'connected') {
           if (handlers.onCallStatusChange) {
             handlers.onCallStatusChange('已连接');
           }
@@ -70,17 +64,8 @@
       };
 
       pc.onconnectionstatechange = function () {
-        if (pc.connectionState === 'failed') {
-          // Network failure — clean up locally, no callEnd to peer
-          if (wrtc.callState !== 'idle') {
-            wrtc.callState = 'idle';
-            cleanupMedia();
-            resetCallState();
-            if (handlers.onCallStateChange) { handlers.onCallStateChange('idle'); }
-            if (handlers.onCallError) {
-              handlers.onCallError('P2P 连接失败，请检查网络或防火墙设置');
-            }
-          }
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          endCall(true);
         }
       };
 
@@ -157,7 +142,6 @@
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = (callType === 'screen');
       wrtc.pendingCandidates = [];
-      wrtc.iceRestartCount = 0;
 
       if (handlers.onCallStateChange) {
         handlers.onCallStateChange('calling', callType);
@@ -199,7 +183,6 @@
       wrtc.callType = callType;
       wrtc.callPeerId = from;
       wrtc.pendingCandidates = [];
-      wrtc.iceRestartCount = 0;
 
       if (handlers.onIncomingCall) {
         handlers.onIncomingCall(from, callType);
@@ -326,8 +309,6 @@
         wsModule.sendCallEnd(wrtc.callPeerId);
       }
 
-      // Set idle before cleanup to prevent re-entrant calls from pc.close()
-      wrtc.callState = 'idle';
       cleanupMedia();
       resetCallState();
 
@@ -339,8 +320,6 @@
     function handleRemoteEndCall() {
       if (wrtc.callState === 'idle') return;
 
-      // Set idle before cleanup to prevent re-entrant calls from pc.close()
-      wrtc.callState = 'idle';
       cleanupMedia();
       resetCallState();
 
@@ -666,7 +645,6 @@
       wrtc.isScreenSharing = false;
       wrtc.pendingCandidates = [];
       wrtc.micAudioTrack = null;
-      wrtc.iceRestartCount = 0;
     }
 
     function getCallState() {

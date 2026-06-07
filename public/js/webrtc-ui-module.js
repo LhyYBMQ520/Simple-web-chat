@@ -13,31 +13,6 @@
       return document.getElementById('callIncomingPrompt');
     }
 
-    function resetCallButtons(callType) {
-      var muteBtn = document.getElementById('callMuteBtn');
-      if (muteBtn) {
-        muteBtn.className = 'call-ctrl-btn';
-        muteBtn.title = '静音';
-        muteBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
-      }
-
-      var videoBtn = document.getElementById('callVideoBtn');
-      if (videoBtn) {
-        var isVideoCall = callType === 'video';
-        videoBtn.style.display = isVideoCall ? 'flex' : 'none';
-        if (isVideoCall) {
-          videoBtn.className = 'call-ctrl-btn';
-          videoBtn.title = '关闭摄像头';
-          videoBtn.innerHTML = '<i class="fa-solid fa-video"></i>';
-        }
-      }
-
-      var screenBtn = document.getElementById('callScreenBtn');
-      if (screenBtn) {
-        screenBtn.style.display = 'none';
-      }
-    }
-
     function showOverlay(callType) {
       var overlay = getOverlay();
       if (!overlay) return;
@@ -58,8 +33,12 @@
         localVideo.style.display = (callType === 'video') ? 'block' : 'none';
       }
 
-      // Reset buttons to default state for new call
-      resetCallButtons(callType);
+      if (videoBtn) {
+        videoBtn.style.display = callType === 'video' ? 'flex' : 'none';
+      }
+      if (screenBtn) {
+        screenBtn.style.display = 'none';
+      }
 
       updateStatusText(callType === 'audio' ? '语音通话中' : callType === 'video' ? '视频通话中' : '屏幕共享中');
 
@@ -221,11 +200,13 @@
 
       var remoteVideo = document.getElementById('remoteVideo');
       var localVideo = document.getElementById('localVideo');
+      var videoBtn = document.getElementById('callVideoBtn');
+      var screenBtn = document.getElementById('callScreenBtn');
 
       if (remoteVideo) remoteVideo.style.display = 'none';
       if (localVideo) localVideo.style.display = 'none';
-
-      resetCallButtons(callType);
+      if (videoBtn) videoBtn.style.display = 'none';
+      if (screenBtn) screenBtn.style.display = 'none';
 
       updateStatusText('正在呼叫... (' + typeLabel + ')');
       var dur = document.getElementById('callDuration');
@@ -239,8 +220,6 @@
 
       overlay.style.display = 'flex';
       overlay.className = 'call-overlay call-overlay-audio';
-
-      resetCallButtons(callType);
 
       updateStatusText(typeLabel + '来电...');
       var dur = document.getElementById('callDuration');
