@@ -40,6 +40,18 @@
         screenBtn.style.display = 'none';
       }
 
+      // 每次打开通话界面时重置控制按钮状态，避免上次通话的残留 UI 状态
+      if (muteBtn) {
+        muteBtn.className = 'call-ctrl-btn';
+        muteBtn.title = '静音';
+        muteBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+      }
+      if (videoBtn && callType === 'video') {
+        videoBtn.className = 'call-ctrl-btn';
+        videoBtn.title = '关闭摄像头';
+        videoBtn.innerHTML = '<i class="fa-solid fa-video"></i>';
+      }
+
       updateStatusText(callType === 'audio' ? '语音通话中' : callType === 'video' ? '视频通话中' : '屏幕共享中');
 
       // Start duration timer
