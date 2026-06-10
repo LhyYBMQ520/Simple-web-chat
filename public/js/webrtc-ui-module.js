@@ -20,6 +20,13 @@
       overlay.style.display = 'flex';
       overlay.className = 'call-overlay';
 
+      // 清除上一次通话的连接信息残留，避免显示旧模式（如"UDP中继"）
+      var connInfo = document.getElementById('callConnInfo');
+      if (connInfo) {
+        connInfo.innerHTML = '';
+        connInfo.style.display = 'none';
+      }
+
       var isVideo = callType === 'video' || callType === 'screen';
 
       var remoteVideo = document.getElementById('remoteVideo');
@@ -66,6 +73,13 @@
         overlay.style.display = 'none';
       }
       stopDurationTimer();
+
+      // 清除连接信息，防止下次通话显示旧模式
+      var connInfo = document.getElementById('callConnInfo');
+      if (connInfo) {
+        connInfo.innerHTML = '';
+        connInfo.style.display = 'none';
+      }
 
       // Clean up video elements
       var remoteVideo = document.getElementById('remoteVideo');

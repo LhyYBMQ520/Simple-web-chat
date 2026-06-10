@@ -15,8 +15,13 @@ const wss = new WebSocketServer({ server });
 app.use(express.json());
 
 // 向前端注入服务端配置
+// 注意：必须禁用缓存，否则浏览器可能使用旧的 TURN 配置
+// 导致 RTCPeerConnection 仍然携带已删除的 TURN 服务器
 app.get('/js/config.js', (_req, res) => {
   res.type('application/javascript');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.send(
     `window.__CHAT_CONFIG__ = {` +
     `  maxFileSize: ${MAX_FILE_SIZE},` +

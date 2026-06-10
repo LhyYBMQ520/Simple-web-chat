@@ -253,11 +253,12 @@
         wrtc.isMuted = false;
         wrtc.isVideoOff = (wrtc.callType !== 'screen');
         wrtc.isScreenSharing = false;
-        startConnectionStats();
 
+        // 先更新 UI（showOverlay 会清除旧连接信息），再启动统计轮询
         if (handlers.onCallStateChange) {
           handlers.onCallStateChange('connected', wrtc.callType);
         }
+        startConnectionStats();
 
         wsModule.sendCallAccept(wrtc.callPeerId);
       }).catch(function (err) {
@@ -275,11 +276,12 @@
       if (wrtc.callState !== 'calling') return;
       wrtc.callState = 'connected';
       wrtc.callStartTime = Date.now();
-      startConnectionStats();
 
+      // 先更新 UI（showOverlay 会清除旧连接信息），再启动统计轮询
       if (handlers.onCallStateChange) {
         handlers.onCallStateChange('connected', wrtc.callType);
       }
+      startConnectionStats();
 
       wsModule.sendCallOffer(from, wrtc.pc.localDescription);
     }
@@ -543,7 +545,17 @@
       stopConnectionStats();
       lastModeLabel = '';
       lastModeClass = '';
-      pollConnectionStats();
+      // 发送初始状态，清除上一次通话残留的连接模式显示
+      if (handlers.onConnectionInfo) {
+        handlers.onConnectionInfo('连接中…', 'connecting', null);
+      }
+      // 延迟首次轮询：ICE 候选协商需要时间完成，立即轮询大概率找不到
+      // nominated pair，导致 UI 保持旧状态不更新
+      setTimeout(function () {
+        if (wrtc.callState === 'connected' && wrtc.pc) {
+          pollConnectionStats();
+        }
+      }, 800);
       statsTimer = setInterval(pollConnectionStats, 3000);
     }
 
@@ -568,10 +580,10 @@
             selectedPair = stat;
           }
         });
-        // Fallback: use any succeeded pair
+        // Fallback: use any succeeded pair (take the last one, as it's most recent)
         if (!selectedPair) {
           report.forEach(function (stat) {
-            if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && !selectedPair) {
+            if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
               selectedPair = stat;
             }
           });
