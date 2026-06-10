@@ -29,6 +29,7 @@
         isVideoOff: false,
         isScreenSharing: false,
         pendingCandidates: [],
+        prePcCandidates: [],
         callStartTime: null,
         callPeerId: null
       }

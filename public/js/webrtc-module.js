@@ -43,7 +43,12 @@
       };
 
       pc.oniceconnectionstatechange = function () {
+        console.log('[ICE 状态变更] ' + pc.iceConnectionState +
+          ' | 本地候选: ' + (pc.localDescription ? pc.localDescription.type : 'none') +
+          ' | 远端候选: ' + (pc.remoteDescription ? pc.remoteDescription.type : 'none'));
+
         if (pc.iceConnectionState === 'failed') {
+          console.log('[ICE 连接失败] 尝试 ICE 重启...');
           pc.restartIce();
         }
         if (pc.iceConnectionState === 'disconnected') {
@@ -57,6 +62,23 @@
           }, 3000);
         }
         if (pc.iceConnectionState === 'connected') {
+          // Log the actual candidate pair being used
+          pc.getStats(null).then(function (report) {
+            report.forEach(function (stat) {
+              if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && stat.nominated) {
+                var localCand = report.get(stat.localCandidateId);
+                var remoteCand = report.get(stat.remoteCandidateId);
+                var localType = localCand ? localCand.candidateType : '?';
+                var remoteType = remoteCand ? remoteCand.candidateType : '?';
+                var localProto = localCand ? (localCand.protocol || 'udp') : 'udp';
+                var remoteProto = remoteCand ? (remoteCand.protocol || 'udp') : 'udp';
+                var rtt = typeof stat.currentRoundTripTime === 'number' && stat.currentRoundTripTime > 0
+                  ? Math.round(stat.currentRoundTripTime * 1000) + 'ms' : 'N/A';
+                console.log('[ICE 连接建立] local: ' + localType + '/' + localProto +
+                  ' | remote: ' + remoteType + '/' + remoteProto + ' | RTT: ' + rtt);
+              }
+            });
+          }).catch(function () {});
           if (handlers.onCallStatusChange) {
             handlers.onCallStatusChange('已连接');
           }
@@ -183,6 +205,10 @@
       wrtc.callType = callType;
       wrtc.callPeerId = from;
       wrtc.pendingCandidates = [];
+      // Buffer ICE candidates that arrive before the PC is created.
+      // Without this, the caller's early srflx/host candidates are discarded,
+      // forcing the connection through relay (whose candidates arrive later).
+      wrtc.prePcCandidates = [];
 
       if (handlers.onIncomingCall) {
         handlers.onIncomingCall(from, callType);
@@ -212,6 +238,16 @@
 
         wrtc.pc = createPeerConnection();
         addLocalTracksToPC(wrtc.pc, stream);
+
+        // Flush pre-PC ICE candidates (received before the PC was created)
+        // into the pending queue. They will be added once the remote description
+        // is set via handleRemoteOffer().
+        if (wrtc.prePcCandidates && wrtc.prePcCandidates.length > 0) {
+          var preCount = wrtc.prePcCandidates.length;
+          wrtc.pendingCandidates = wrtc.prePcCandidates.concat(wrtc.pendingCandidates);
+          wrtc.prePcCandidates = [];
+          console.log('[ICE 候选] 已恢复 ' + preCount + ' 个早期候选（PC 创建前收到）');
+        }
 
         wrtc.callState = 'connected';
         wrtc.isMuted = false;
@@ -284,7 +320,15 @@
     }
 
     function handleRemoteCandidate(from, candidate) {
-      if (!wrtc.pc) return;
+      // If PC doesn't exist yet (callee hasn't accepted), buffer the candidate.
+      // This prevents early srflx/host candidates from being lost, which would
+      // force the connection through relay.
+      if (!wrtc.pc) {
+        if (wrtc.prePcCandidates) {
+          wrtc.prePcCandidates.push(candidate);
+        }
+        return;
+      }
       var iceCandidate = new RTCIceCandidate(candidate);
       if (wrtc.pc.remoteDescription && wrtc.pc.remoteDescription.type) {
         wrtc.pc.addIceCandidate(iceCandidate).catch(function (err) {
@@ -518,7 +562,6 @@
 
       wrtc.pc.getStats(null).then(function (report) {
         var selectedPair = null;
-        var localCandidate = null;
 
         report.forEach(function (stat) {
           if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && stat.nominated) {
@@ -534,37 +577,61 @@
           });
         }
 
-        if (selectedPair && selectedPair.localCandidateId) {
-          var localCand = report.get(selectedPair.localCandidateId);
-          if (localCand) {
-            localCandidate = localCand;
-          }
-        }
+        if (selectedPair) {
+          // Fetch both local and remote candidates to correctly determine connection mode
+          var localCandidate = null;
+          var remoteCandidate = null;
 
-        if (selectedPair && localCandidate) {
-          var candType = localCandidate.candidateType || 'unknown';
-          var protocol = (localCandidate.protocol || 'udp').toLowerCase();
+          if (selectedPair.localCandidateId) {
+            localCandidate = report.get(selectedPair.localCandidateId);
+          }
+          if (selectedPair.remoteCandidateId) {
+            remoteCandidate = report.get(selectedPair.remoteCandidateId);
+          }
+
+          // Determine connection mode based on BOTH candidates
+          // If EITHER candidate is relay, the connection is relayed (both sides see the same label)
+          var localType = localCandidate ? (localCandidate.candidateType || 'unknown') : 'unknown';
+          var remoteType = remoteCandidate ? (remoteCandidate.candidateType || 'unknown') : 'unknown';
+          var localProtocol = localCandidate ? (localCandidate.protocol || 'udp').toLowerCase() : 'udp';
+          var remoteProtocol = remoteCandidate ? (remoteCandidate.protocol || 'udp').toLowerCase() : 'udp';
+
+          var isRelay = (localType === 'relay' || remoteType === 'relay');
+          var isAllHost = (localType === 'host' && remoteType === 'host');
+          var isAllSrflxOrPrflx = !isRelay && !isAllHost &&
+            ((localType === 'srflx' || localType === 'prflx') && (remoteType === 'srflx' || remoteType === 'prflx'));
 
           var modeLabel = '';
           var modeClass = '';
 
-          if (candType === 'host') {
-            modeLabel = 'LAN 直连';
-            modeClass = 'host';
-          } else if (candType === 'srflx' || candType === 'prflx') {
-            modeLabel = 'P2P 直连';
-            modeClass = 'srflx';
-          } else if (candType === 'relay') {
-            if (protocol === 'tcp' || protocol === 'tcp-act' || protocol === 'tcp-pass') {
+          if (isRelay) {
+            // Connection is relayed — check the relay candidate's protocol
+            var relayProtocol = localType === 'relay' ? localProtocol : remoteProtocol;
+            if (relayProtocol === 'tcp' || relayProtocol === 'tcp-act' || relayProtocol === 'tcp-pass') {
               modeLabel = 'TCP 中继';
               modeClass = 'relay-tcp';
             } else {
               modeLabel = 'UDP 中继';
               modeClass = 'relay-udp';
             }
-          } else {
-            modeLabel = candType + '/' + protocol;
+          } else if (isAllHost) {
+            modeLabel = 'LAN 直连';
             modeClass = 'host';
+          } else if (isAllSrflxOrPrflx) {
+            modeLabel = 'P2P 直连';
+            modeClass = 'srflx';
+          } else {
+            // Mixed or unknown: use local type as fallback
+            if (localType === 'host') {
+              modeLabel = 'LAN 直连';
+              modeClass = 'host';
+            } else if (localType === 'srflx' || localType === 'prflx') {
+              modeLabel = 'P2P 直连';
+              modeClass = 'srflx';
+            } else {
+              modeLabel = localType + '/' + localProtocol;
+              modeClass = 'host';
+            }
           }
 
           var rtt = null;
@@ -575,7 +642,10 @@
           // Log mode transitions
           if (modeLabel !== lastModeLabel || modeClass !== lastModeClass) {
             var prevLabel = lastModeLabel || '初始连接';
-            console.log('[连接模式切换] ' + prevLabel + ' -> ' + modeLabel + (rtt !== null ? ' | RTT: ' + rtt + 'ms' : ''));
+            console.log('[连接模式切换] ' + prevLabel + ' -> ' + modeLabel +
+              ' | local: ' + localType + '/' + localProtocol +
+              ' | remote: ' + remoteType + '/' + remoteProtocol +
+              (rtt !== null ? ' | RTT: ' + rtt + 'ms' : ''));
             lastModeLabel = modeLabel;
             lastModeClass = modeClass;
           }
@@ -644,6 +714,7 @@
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = false;
       wrtc.pendingCandidates = [];
+      wrtc.prePcCandidates = [];
       wrtc.micAudioTrack = null;
     }
 
