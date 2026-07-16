@@ -23,7 +23,7 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天应用。用�
 - **🖼️ 图片与文件传输**：支持发送图片（点击灯箱放大预览）和文件，通过 Cloudflare R2 对象存储直传，不占用 VPS 带宽和磁盘
 - **📶 连接状态与延迟**：会话列表标题右侧实时显示与服务器连接状态及网络延迟
 - **📱 响应式设计**：完美支持桌面端和移动端的屏幕比例（尽量吧。。。移动端的不确定性太多了）
-- **📞 音视频通话**：基于 WebRTC 的实时语音通话、视频通话和屏幕共享（带语音），支持静音、摄像头开关、连接模式显示（LAN/P2P/UDP中继/TCP中继）及 RTT 延迟
+- **📞 音视频通话**：基于 WebRTC 的实时语音通话、视频通话和屏幕共享（带语音），支持静音、摄像头开关、连接模式显示（LAN/P2P/UDP中继/TCP中继）及 RTT 延迟；通话中切换网络时自动执行 ICE restart 恢复媒体连接
 - **⚙️ 零配置**：开箱即用，无需复杂配置
 
 ## 🛠️ 技术栈
@@ -217,7 +217,14 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 - **连接状态显示**：在“会话列表”标题右侧显示连接中/重连中/已断开/已连接等状态图标
 - **连接延迟显示**：已连接时显示与服务器的实时延迟（ms）
 - **ID 有效期**：ID 有 24 小时有效期，过期后会自动生成新 ID，相当于每个会话的有效期为 24 小时
-- **通话功能**：会话 header 右侧三个按钮分别发起语音通话、视频通话和屏幕共享（安卓端暂未适配）；通话中使用悬浮窗控制按钮进行静音（屏幕共享时仅关闭麦克风）、开关摄像头、挂断等操作；屏幕共享为单向模式（发起方共享屏幕 + 语音，接收方仅语音）；连接信息区显示当前 ICE 连接模式和 RTT 延迟
+- **通话功能**：会话 header 右侧三个按钮分别发起语音通话、视频通话和屏幕共享（部分安卓浏览器不支持主动共享屏幕）；通话中使用悬浮窗控制按钮进行静音（屏幕共享时仅关闭麦克风）、开关摄像头、挂断等操作；屏幕共享为单向模式（发起方共享屏幕 + 语音，接收方仅语音）；连接信息区显示当前 ICE 连接模式和 RTT 延迟；网络切换时先显示“重连中…”，信令恢复后自动重新协商，无需挂断重拨
+
+### 通话中网络切换
+
+- Wi-Fi 与移动网络互相切换时，原 ICE 候选对会失效，界面短暂显示“重连中…”属于正常现象
+- WebSocket 重新连接并完成 UID 绑定后，客户端会自动执行完整 ICE restart，现有音视频或屏幕共享 track 不会重新采集
+- 恢复后连接标签会重新读取实际候选对：同一私网显示“LAN 直连”，公网直连显示“P2P 直连”，使用 TURN 时显示 UDP/TCP 中继
+- 如果运营商 NAT 无法建立 P2P 且服务端未配置 TURN，切换到移动网络后可能无法恢复；此时需要配置 TURN 作为兜底
 
 ## 📁 项目结构
 
@@ -278,7 +285,7 @@ Simple-web-chat/
 - **对象存储服务**：支持 Cloudflare R2 / S3 兼容存储，提供预签名上传 URL、带 `response-content-disposition` 的预签名下载 URL（307 重定向，不经过 VPS 中转文件流量）、文件删除
 - **文件上传校验**：前后端双重校验文件大小，限制值由 `MAX_FILE_SIZE` 环境变量统一控制，通过 `/js/config.js` 动态注入前端
 - **动态前端配置**：`/js/config.js` 由服务端动态生成，向浏览器注入 `MAX_FILE_SIZE`、WebRTC ICE 服务器等后端配置
-- **WebRTC 信令转发**：支持 7 种信令消息类型（callRequest/callAccept/callReject/callEnd/callOffer/callAnswer/iceCandidate），服务端纯转发 + 详细日志（ICE 候选类型/协议、SDP 协商阶段）
+- **WebRTC 信令转发**：支持 8 种信令消息类型（callRequest/callAccept/callReject/callEnd/callRestart/callOffer/callAnswer/iceCandidate），服务端纯转发 + 详细日志（ICE 重启请求、ICE 候选类型/协议、SDP 协商阶段）
 
 ### 前端实现
 
@@ -296,7 +303,7 @@ Simple-web-chat/
 - **UID 状态显示**：实时显示 UID 剩余有效期，即将过期时带有警告标识
 - **输入框交互**：桌面 Enter 发送 / 移动端 Enter 换行；粘贴保留原始换行格式；自动高度扩展；空内容禁用发送；表情面板支持搜索和分类；引用回复支持
 - **文件上传**：支持图片和文件上传，预签名 URL 直传 R2；前端预检文件大小、类型，超限直接拦截；未知类型自动 fallback `application/octet-stream`；上传期间切换会话不会发错目标（入口捕获 targetId）
-- **WebRTC 通话**：语音/视频/屏幕共享三种通话模式；通话悬浮窗含远程视频 + 本地 PIP 小窗；静音/摄像头/屏幕共享控制按钮；ICE 连接模式 + RTT 延迟实时显示；通话中移动端旋转不触发页面刷新
+- **WebRTC 通话**：语音/视频/屏幕共享三种通话模式；通话悬浮窗含远程视频 + 本地 PIP 小窗；静音/摄像头/屏幕共享控制按钮；ICE 连接模式 + RTT 延迟实时显示；使用完整 ICE restart 自动恢复 Wi-Fi/移动网络切换；SDP 发送失败自动 rollback，Offer/Answer 对应的 ICE candidate 在 SDP 发出后再释放；通话中移动端旋转不触发页面刷新
 
 ## 📊 数据库设计
 
@@ -416,6 +423,10 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 {type: "callReject", from: "peerUID", reason: "busy|declined|error"}
 {type: "callEnd", to: "peerUID"}
 
+// 通话中请求重新建立 ICE 媒体路径
+{type: "callRestart", to: "peerUID"}
+{type: "callRestart", from: "peerUID"}
+
 // SDP 交换
 {type: "callOffer", to: "peerUID", sdp: {type: "offer", sdp: "..."}}
 {type: "callAnswer", to: "peerUID", sdp: {type: "answer", sdp: "..."}}
@@ -431,7 +442,6 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 - [ ] 添加消息搜索与过滤
 - [ ] 实现对方状态显示（如输入中。。。）
 - [ ] 深色主题适配
-- [x] 尝试添加语音通话，屏幕共享功能 （几乎完成了，剩下的仅有测试+修复bug和优化使用体验）
 
 ## 🔒 安全性说明
 
