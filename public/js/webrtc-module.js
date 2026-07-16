@@ -2,6 +2,14 @@
   function createWebRTCModule(options) {
     const { state, wsModule, handlers } = options;
     const wrtc = state.webrtc;
+    var disconnectTimer = null;
+    var restartRetryTimer = null;
+    var restartInProgress = false;
+    var makingOffer = false;
+    var ignoreOffer = false;
+    var settingRemoteDescription = false;
+    var bufferLocalCandidates = false;
+    var bufferedLocalCandidates = [];
 
     function getIceServers() {
       if (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.webrtc && window.__CHAT_CONFIG__.webrtc.iceServers) {
@@ -27,7 +35,11 @@
           var protoMatch = candStr.match(/^\S+\s+\S+\s+(\S+)/);
           if (typMatch) { cand.candidateType = typMatch[1]; }
           if (protoMatch) { cand.protocol = protoMatch[1]; }
-          wsModule.sendIceCandidate(wrtc.callPeerId, cand);
+          if (bufferLocalCandidates) {
+            bufferedLocalCandidates.push(cand);
+          } else {
+            wsModule.sendIceCandidate(wrtc.callPeerId, cand);
+          }
         }
       };
 
@@ -47,21 +59,13 @@
           ' | 本地候选: ' + (pc.localDescription ? pc.localDescription.type : 'none') +
           ' | 远端候选: ' + (pc.remoteDescription ? pc.remoteDescription.type : 'none'));
 
-        if (pc.iceConnectionState === 'failed') {
-          console.log('[ICE 连接失败] 尝试 ICE 重启...');
-          pc.restartIce();
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+          showReconnectingState();
+          scheduleIceRecovery(pc.iceConnectionState === 'failed' ? 0 : 1500);
         }
-        if (pc.iceConnectionState === 'disconnected') {
-          // give it a moment to reconnect before declaring failure
-          setTimeout(function () {
-            if (pc.iceConnectionState === 'disconnected') {
-              if (handlers.onCallStatusChange) {
-                handlers.onCallStatusChange('网络不稳定，正在重连...');
-              }
-            }
-          }, 3000);
-        }
-        if (pc.iceConnectionState === 'connected') {
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          clearRecoveryTimers();
+          restartInProgress = false;
           // Log the actual candidate pair being used
           pc.getStats(null).then(function (report) {
             report.forEach(function (stat) {
@@ -86,8 +90,9 @@
       };
 
       pc.onconnectionstatechange = function () {
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-          endCall(true);
+        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+          showReconnectingState();
+          scheduleIceRecovery(pc.connectionState === 'failed' ? 0 : 1500);
         }
       };
 
@@ -188,11 +193,17 @@
         wrtc.pc = createPeerConnection();
         addLocalTracksToPC(wrtc.pc, stream);
 
+        bufferLocalCandidates = true;
+        bufferedLocalCandidates = [];
         wrtc.pc.createOffer().then(function (offer) {
           return wrtc.pc.setLocalDescription(offer);
         }).then(function () {
-          wsModule.sendCallRequest(wrtc.callPeerId, callType);
+          if (!wsModule.sendCallRequest(wrtc.callPeerId, callType)) {
+            throw new Error('信令连接尚未建立');
+          }
+          releaseBufferedLocalCandidates();
         }).catch(function (err) {
+          discardBufferedLocalCandidates();
           handleMediaError(err);
         });
       }).catch(function (err) {
@@ -298,25 +309,58 @@
 
     function handleRemoteOffer(from, sdp) {
       if (!wrtc.pc) return;
+      var pc = wrtc.pc;
+      var offerCollision = makingOffer || pc.signalingState !== 'stable';
+      var isPolite = String(state.myId || '') > String(from || '');
+      ignoreOffer = !isPolite && offerCollision;
 
-      wrtc.pc.setRemoteDescription(new RTCSessionDescription(sdp)).then(function () {
-        flushPendingCandidates();
+      if (ignoreOffer) {
+        console.log('[SDP] 忽略同时到达的 Offer，由当前本地协商继续');
+        return;
+      }
 
-        return wrtc.pc.createAnswer();
-      }).then(function (answer) {
-        return wrtc.pc.setLocalDescription(answer);
+      settingRemoteDescription = true;
+      bufferLocalCandidates = true;
+      bufferedLocalCandidates = [];
+      var prepare = offerCollision && pc.signalingState !== 'stable'
+        ? pc.setLocalDescription({ type: 'rollback' })
+        : Promise.resolve();
+
+      prepare.then(function () {
+        return pc.setRemoteDescription(new RTCSessionDescription(sdp));
       }).then(function () {
-        wsModule.sendCallAnswer(from, wrtc.pc.localDescription);
+        settingRemoteDescription = false;
+        ignoreOffer = false;
+        flushPendingCandidates();
+        return pc.createAnswer();
+      }).then(function (answer) {
+        return pc.setLocalDescription(answer);
+      }).then(function () {
+        if (!wsModule.sendCallAnswer(from, pc.localDescription)) {
+          throw new Error('信令连接尚未恢复');
+        }
+        releaseBufferedLocalCandidates();
       }).catch(function (err) {
+        settingRemoteDescription = false;
+        discardBufferedLocalCandidates();
         console.error('处理远端 Offer 失败:', err);
       });
     }
 
     function handleRemoteAnswer(from, sdp) {
       if (!wrtc.pc) return;
+      if (wrtc.pc.signalingState !== 'have-local-offer') {
+        console.log('[SDP] 忽略已过期的 Answer，当前状态: ' + wrtc.pc.signalingState);
+        return;
+      }
+      settingRemoteDescription = true;
       wrtc.pc.setRemoteDescription(new RTCSessionDescription(sdp)).then(function () {
+        settingRemoteDescription = false;
+        ignoreOffer = false;
+        restartInProgress = false;
         flushPendingCandidates();
       }).catch(function (err) {
+        settingRemoteDescription = false;
         console.error('处理远端 Answer 失败:', err);
       });
     }
@@ -332,7 +376,8 @@
         return;
       }
       var iceCandidate = new RTCIceCandidate(candidate);
-      if (wrtc.pc.remoteDescription && wrtc.pc.remoteDescription.type) {
+      if (ignoreOffer) return;
+      if (!settingRemoteDescription && wrtc.pc.remoteDescription && wrtc.pc.remoteDescription.type) {
         wrtc.pc.addIceCandidate(iceCandidate).catch(function (err) {
           console.error('添加 ICE 候选失败:', err);
         });
@@ -524,16 +569,146 @@
     }
 
     function renegotiate() {
-      if (!wrtc.pc) return;
-      wrtc.pc.createOffer().then(function (offer) {
-        return wrtc.pc.setLocalDescription(offer);
+      createAndSendOffer(false);
+    }
+
+    function createAndSendOffer(iceRestart) {
+      var pc = wrtc.pc;
+      if (!pc || !wrtc.callPeerId || makingOffer || pc.signalingState !== 'stable') {
+        return Promise.resolve(false);
+      }
+
+      makingOffer = true;
+      bufferLocalCandidates = true;
+      bufferedLocalCandidates = [];
+      return pc.createOffer(iceRestart ? { iceRestart: true } : undefined).then(function (offer) {
+        return pc.setLocalDescription(offer);
       }).then(function () {
-        if (wrtc.callPeerId) {
-          wsModule.sendCallOffer(wrtc.callPeerId, wrtc.pc.localDescription);
-        }
+        var sent = wsModule.sendCallOffer(wrtc.callPeerId, pc.localDescription);
+        if (!sent) throw new Error('信令连接尚未恢复');
+        releaseBufferedLocalCandidates();
+        return true;
       }).catch(function (err) {
-        console.error('重协商失败:', err);
+        console.error(iceRestart ? 'ICE 重启协商失败:' : '重协商失败:', err);
+        if (wrtc.pc === pc && pc.signalingState === 'have-local-offer') {
+          return pc.setLocalDescription({ type: 'rollback' }).catch(function () {}).then(function () {
+            return false;
+          });
+        }
+        return false;
+      }).finally(function () {
+        discardBufferedLocalCandidates();
+        makingOffer = false;
       });
+    }
+
+    function releaseBufferedLocalCandidates() {
+      bufferLocalCandidates = false;
+      bufferedLocalCandidates.splice(0).forEach(function (candidate) {
+        wsModule.sendIceCandidate(wrtc.callPeerId, candidate);
+      });
+    }
+
+    function discardBufferedLocalCandidates() {
+      bufferLocalCandidates = false;
+      bufferedLocalCandidates = [];
+    }
+
+    function showReconnectingState() {
+      if (handlers.onCallStatusChange) {
+        handlers.onCallStatusChange('网络变化，正在恢复通话...');
+      }
+      if (handlers.onConnectionInfo) {
+        handlers.onConnectionInfo('重连中…', 'connecting', null);
+      }
+      lastModeLabel = '';
+      lastModeClass = '';
+    }
+
+    function clearRecoveryTimers() {
+      if (disconnectTimer) {
+        clearTimeout(disconnectTimer);
+        disconnectTimer = null;
+      }
+      if (restartRetryTimer) {
+        clearTimeout(restartRetryTimer);
+        restartRetryTimer = null;
+      }
+    }
+
+    function scheduleIceRecovery(delay) {
+      if (wrtc.callState !== 'connected' || !wrtc.pc || disconnectTimer || restartInProgress) return;
+      disconnectTimer = setTimeout(function () {
+        disconnectTimer = null;
+        requestIceRecovery();
+      }, delay);
+    }
+
+    function requestIceRecovery() {
+      if (wrtc.callState !== 'connected' || !wrtc.pc || !wrtc.callPeerId) return;
+
+      showReconnectingState();
+      if (wsModule.isOpen()) {
+        // The request/echo handshake confirms both signaling sockets are online.
+        wsModule.sendCallRestart(wrtc.callPeerId);
+      }
+
+      if (restartRetryTimer) clearTimeout(restartRetryTimer);
+      restartRetryTimer = setTimeout(function () {
+        restartRetryTimer = null;
+        if (wrtc.pc && wrtc.pc.iceConnectionState !== 'connected' && wrtc.pc.iceConnectionState !== 'completed') {
+          requestIceRecovery();
+        }
+      }, 5000);
+    }
+
+    function handleRestartRequest(from) {
+      if (!wrtc.pc || wrtc.callState !== 'connected' || from !== wrtc.callPeerId) return;
+
+      // A stable ordering prevents both peers from creating restart offers at once.
+      if (String(state.myId || '') < String(from || '')) {
+        performIceRestart();
+      } else {
+        wsModule.sendCallRestart(from);
+      }
+    }
+
+    function performIceRestart() {
+      var pc = wrtc.pc;
+      if (!pc || restartInProgress || makingOffer) return;
+      if (pc.signalingState !== 'stable') {
+        scheduleIceRecovery(1000);
+        return;
+      }
+
+      restartInProgress = true;
+      console.log('[ICE 连接恢复] 开始完整 ICE restart 协商');
+      showReconnectingState();
+      createAndSendOffer(true).then(function (sent) {
+        if (!sent) restartInProgress = false;
+      });
+
+      if (restartRetryTimer) clearTimeout(restartRetryTimer);
+      restartRetryTimer = setTimeout(function () {
+        restartRetryTimer = null;
+        restartInProgress = false;
+        if (wrtc.pc && wrtc.pc.iceConnectionState !== 'connected' && wrtc.pc.iceConnectionState !== 'completed') {
+          if (wrtc.pc.signalingState === 'have-local-offer') {
+            wrtc.pc.setLocalDescription({ type: 'rollback' }).catch(function () {}).then(requestIceRecovery);
+          } else {
+            requestIceRecovery();
+          }
+        }
+      }, 10000);
+    }
+
+    function handleSignalingReconnected() {
+      if (wrtc.callState !== 'connected' || !wrtc.pc) return;
+      var iceState = wrtc.pc.iceConnectionState;
+      if (iceState !== 'connected' && iceState !== 'completed') {
+        console.log('[信令已恢复] 请求恢复 WebRTC 媒体连接');
+        requestIceRecovery();
+      }
     }
 
     // === Connection stats polling ===
@@ -571,19 +746,28 @@
 
     function pollConnectionStats() {
       if (!wrtc.pc || wrtc.callState !== 'connected') return;
+      var pc = wrtc.pc;
+      if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+        showReconnectingState();
+        return;
+      }
 
-      wrtc.pc.getStats(null).then(function (report) {
+      pc.getStats(null).then(function (report) {
+        if (wrtc.pc !== pc || (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed')) {
+          return;
+        }
         var selectedPair = null;
 
+        // Modern browsers expose the exact pair selected by the ICE transport.
         report.forEach(function (stat) {
-          if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && stat.nominated) {
-            selectedPair = stat;
+          if (stat.type === 'transport' && stat.selectedCandidatePairId) {
+            selectedPair = report.get(stat.selectedCandidatePairId) || selectedPair;
           }
         });
-        // Fallback: use any succeeded pair (take the last one, as it's most recent)
+
         if (!selectedPair) {
           report.forEach(function (stat) {
-            if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
+            if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && (stat.nominated || stat.selected)) {
               selectedPair = stat;
             }
           });
@@ -607,11 +791,14 @@
           var remoteType = remoteCandidate ? (remoteCandidate.candidateType || 'unknown') : 'unknown';
           var localProtocol = localCandidate ? (localCandidate.protocol || 'udp').toLowerCase() : 'udp';
           var remoteProtocol = remoteCandidate ? (remoteCandidate.protocol || 'udp').toLowerCase() : 'udp';
+          var localAddress = localCandidate ? (localCandidate.address || localCandidate.ip || '') : '';
+          var remoteAddress = remoteCandidate ? (remoteCandidate.address || remoteCandidate.ip || '') : '';
 
           var isRelay = (localType === 'relay' || remoteType === 'relay');
-          var isAllHost = (localType === 'host' && remoteType === 'host');
-          var isAllSrflxOrPrflx = !isRelay && !isAllHost &&
-            ((localType === 'srflx' || localType === 'prflx') && (remoteType === 'srflx' || remoteType === 'prflx'));
+          var isAllHost = localType === 'host' && remoteType === 'host';
+          var isLan = isAllHost &&
+            isPrivateHostAddress(localAddress) &&
+            isPrivateHostAddress(remoteAddress);
 
           var modeLabel = '';
           var modeClass = '';
@@ -626,24 +813,13 @@
               modeLabel = 'UDP 中继';
               modeClass = 'relay-udp';
             }
-          } else if (isAllHost) {
+          } else if (isLan) {
             modeLabel = 'LAN 直连';
             modeClass = 'host';
-          } else if (isAllSrflxOrPrflx) {
+          } else {
+            // host+srflx/prflx is a normal public P2P path, not a LAN path.
             modeLabel = 'P2P 直连';
             modeClass = 'srflx';
-          } else {
-            // Mixed or unknown: use local type as fallback
-            if (localType === 'host') {
-              modeLabel = 'LAN 直连';
-              modeClass = 'host';
-            } else if (localType === 'srflx' || localType === 'prflx') {
-              modeLabel = 'P2P 直连';
-              modeClass = 'srflx';
-            } else {
-              modeLabel = localType + '/' + localProtocol;
-              modeClass = 'host';
-            }
           }
 
           var rtt = null;
@@ -667,6 +843,26 @@
           }
         }
       }).catch(function () {});
+    }
+
+    function isPrivateHostAddress(address) {
+      var value = String(address || '').toLowerCase().replace(/^\[|\]$/g, '');
+      if (!value) return false;
+      if (value.indexOf('::ffff:') === 0) value = value.slice(7);
+      if (value.endsWith('.local')) return true;
+      if (value === '::1' || /^fe[89ab]/.test(value) || value.indexOf('fc') === 0 || value.indexOf('fd') === 0) {
+        return true;
+      }
+
+      var parts = value.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(function (part) { return !Number.isInteger(part) || part < 0 || part > 255; })) {
+        return false;
+      }
+      return parts[0] === 10 ||
+        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+        (parts[0] === 192 && parts[1] === 168) ||
+        (parts[0] === 169 && parts[1] === 254) ||
+        parts[0] === 127;
     }
 
     function handleMediaError(err) {
@@ -698,6 +894,12 @@
     }
 
     function cleanupMedia() {
+      clearRecoveryTimers();
+      restartInProgress = false;
+      makingOffer = false;
+      ignoreOffer = false;
+      settingRemoteDescription = false;
+      discardBufferedLocalCandidates();
       stopConnectionStats();
       wrtc.micAudioTrack = null;
       if (wrtc.localStream) {
@@ -760,6 +962,8 @@
       handleRemoteOffer: handleRemoteOffer,
       handleRemoteAnswer: handleRemoteAnswer,
       handleRemoteCandidate: handleRemoteCandidate,
+      handleRestartRequest: handleRestartRequest,
+      handleSignalingReconnected: handleSignalingReconnected,
       handleRemoteEndCall: handleRemoteEndCall,
       getCallState: getCallState,
       isCallActive: isCallActive

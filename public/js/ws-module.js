@@ -102,6 +102,10 @@
       return sendJSON({ type: 'callEnd', to });
     }
 
+    function sendCallRestart(to) {
+      return sendJSON({ type: 'callRestart', to });
+    }
+
     function sendCallOffer(to, sdp) {
       return sendJSON({ type: 'callOffer', to, sdp });
     }
@@ -207,6 +211,11 @@
           return;
         }
 
+        if (d.type === 'callRestart') {
+          handlers.onCallRestart(d);
+          return;
+        }
+
         if (d.type === 'callOffer') {
           handlers.onCallOffer(d);
           return;
@@ -249,6 +258,7 @@
       sendCallAccept,
       sendCallReject,
       sendCallEnd,
+      sendCallRestart,
       sendCallOffer,
       sendCallAnswer,
       sendIceCandidate

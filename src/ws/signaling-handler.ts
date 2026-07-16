@@ -69,6 +69,17 @@ export function handleCallEnd(deps: SignalingDeps, uid: string, msg: { to: strin
   }
 }
 
+export function handleCallRestart(deps: SignalingDeps, uid: string, msg: { to: string }): void {
+  const target = deps.clients.get(msg.to);
+
+  if (target && !deps.uidService.isUIDExpired(msg.to) && target.ws.readyState === WebSocket.OPEN) {
+    console.log(`[ICE 重启请求] ${peerLabel(uid)} -> ${peerLabel(msg.to)} | 状态: 已转发`);
+    sendJSON(target.ws, { type: 'callRestart', from: uid });
+  } else {
+    console.log(`[ICE 重启请求] ${peerLabel(uid)} -> ${peerLabel(msg.to)} | 状态: 对方已离线`);
+  }
+}
+
 // Track SDP/ICE exchange attempts for logging
 const sdpLogCount = new Map<string, number>();
 const iceLogCount = new Map<string, number>();

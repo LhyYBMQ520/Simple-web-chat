@@ -256,6 +256,9 @@
     uidModule.updateUIDDisplay(state);
     console.log(`[UID 绑定成功] 状态: ${d.status} | 剩余: ${Math.floor(d.ttl / 1000)}秒`);
     wsModule.syncActiveChatState();
+    if (webrtcModule && webrtcModule.isCallActive()) {
+      webrtcModule.handleSignalingReconnected();
+    }
   }
 
   function handleError(d) {
@@ -354,6 +357,11 @@
     webrtcModule.handleRemoteEndCall();
   }
 
+  function handleCallRestart(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleRestartRequest(d.from);
+  }
+
   // === WebRTC UI callbacks ===
 
   function onCallStateChange(callState, callType) {
@@ -448,6 +456,7 @@
       onCallAccept: handleCallAccept,
       onCallReject: handleCallReject,
       onCallEnd: handleRemoteCallEnd,
+      onCallRestart: handleCallRestart,
       onCallOffer: handleCallOffer,
       onCallAnswer: handleCallAnswer,
       onIceCandidate: handleIceCandidateMsg
