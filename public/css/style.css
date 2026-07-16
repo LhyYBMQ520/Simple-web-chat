@@ -1376,12 +1376,103 @@ button:hover {
   top: calc(100% + 8px);
   right: 0;
   z-index: 1200;
-  width: 148px;
+  width: 176px;
   padding: 6px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+}
+
+.call-menu-quality {
+  padding: 5px 6px 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.call-menu-quality label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.call-menu-quality label i {
+  color: #3b82f6;
+}
+
+.call-menu-quality select {
+  min-width: 58px;
+  height: 28px;
+  padding: 0 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.call-menu-quality select:focus {
+  border-color: #60a5fa;
+  outline: 2px solid #bfdbfe;
+}
+
+.call-menu-quality select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.call-menu-audio-settings {
+  padding: 4px 6px 7px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 8px;
+}
+
+.call-menu-section-title {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.call-menu-section-title i {
+  color: #3b82f6;
+}
+
+.call-menu-audio-settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.call-menu-audio-settings input {
+  width: 13px;
+  height: 13px;
+  accent-color: #3b82f6;
+}
+
+.call-menu-audio-settings label:last-child {
+  grid-column: 1 / -1;
+}
+
+.call-menu-separator {
+  height: 1px;
+  margin: 0 4px 4px;
+  background: #e2e8f0;
 }
 
 .call-menu-option {
@@ -1471,7 +1562,17 @@ button:hover {
   opacity: 0.7;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.call-quality-stats {
+  flex-basis: 100%;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .call-conn-mode {

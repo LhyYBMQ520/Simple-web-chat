@@ -22,6 +22,7 @@
       const isInCall = state.webrtc && state.webrtc.callState !== 'idle';
       const turnAvailable = typeof isTurnConfigured === 'function' && isTurnConfigured();
       const forceRelay = turnAvailable && state.webrtc && state.webrtc.forceRelay;
+      const qualityProfile = state.webrtc && state.webrtc.qualityProfile || 'standard';
       const relayTitle = !turnAvailable
         ? '服务端未配置 TURN，无法强制中继'
         : isInCall
@@ -51,6 +52,22 @@
               <i class="fa-solid fa-chevron-down call-menu-chevron"></i>
             </summary>
             <div class="call-menu-panel" role="menu" aria-label="通话方式">
+              <div class="call-menu-quality">
+                <label for="callQualitySelect"><i class="fa-solid fa-sliders"></i> 通话质量</label>
+                <select id="callQualitySelect" onchange="setCallQuality(this.value)" ${isInCall ? 'disabled' : ''}>
+                  <option value="auto" ${qualityProfile === 'auto' ? 'selected' : ''}>自动</option>
+                  <option value="low" ${qualityProfile === 'low' ? 'selected' : ''}>省流</option>
+                  <option value="standard" ${qualityProfile === 'standard' ? 'selected' : ''}>标准</option>
+                  <option value="high" ${qualityProfile === 'high' ? 'selected' : ''}>高清</option>
+                </select>
+              </div>
+              <div class="call-menu-audio-settings">
+                <span class="call-menu-section-title"><i class="fa-solid fa-microphone-lines"></i> 麦克风处理</span>
+                <label><input type="checkbox" onchange="setAudioProcessing('echoCancellation', this.checked)" ${state.webrtc.echoCancellation ? 'checked' : ''} ${isInCall ? 'disabled' : ''}> 回声消除</label>
+                <label><input type="checkbox" onchange="setAudioProcessing('noiseSuppression', this.checked)" ${state.webrtc.noiseSuppression ? 'checked' : ''} ${isInCall ? 'disabled' : ''}> 降噪</label>
+                <label><input type="checkbox" onchange="setAudioProcessing('autoGainControl', this.checked)" ${state.webrtc.autoGainControl ? 'checked' : ''} ${isInCall ? 'disabled' : ''}> 自动增益</label>
+              </div>
+              <div class="call-menu-separator"></div>
               <button type="button" class="call-menu-option" role="menuitem" onclick="startAudioCall()">
                 <i class="fa-solid fa-phone"></i>
                 <span>语音通话</span>

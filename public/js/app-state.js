@@ -4,6 +4,15 @@
     RECALLED: 'recalled'
   };
 
+  function loadCallQualityProfile() {
+    const value = localStorage.getItem('callQualityProfile') || 'standard';
+    return ['auto', 'low', 'standard', 'high'].includes(value) ? value : 'standard';
+  }
+
+  function loadEnabledPreference(key) {
+    return localStorage.getItem(key) !== 'false';
+  }
+
   function createInitialState() {
     return {
       myId: null,
@@ -26,6 +35,11 @@
         callState: 'idle',
         callType: null,
         forceRelay: localStorage.getItem('forceRelay') === 'true',
+        qualityProfile: loadCallQualityProfile(),
+        activeQualityProfile: 'standard',
+        echoCancellation: loadEnabledPreference('callEchoCancellation'),
+        noiseSuppression: loadEnabledPreference('callNoiseSuppression'),
+        autoGainControl: loadEnabledPreference('callAutoGainControl'),
         activeIceTransportPolicy: 'all',
         isMuted: false,
         isVideoOff: false,

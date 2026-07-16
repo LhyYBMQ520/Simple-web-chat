@@ -410,13 +410,13 @@
     if (webrtcUIModule) webrtcUIModule.updateStatusText(text);
   }
 
-  function onConnectionInfo(modeLabel, modeClass, rtt) {
+  function onConnectionInfo(modeLabel, modeClass, rtt, qualityStats) {
     if (!webrtcUIModule) return;
     if (!modeLabel) {
       webrtcUIModule.hideConnectionInfo();
       return;
     }
-    webrtcUIModule.updateConnectionInfo(modeLabel, modeClass, rtt);
+    webrtcUIModule.updateConnectionInfo(modeLabel, modeClass, rtt, qualityStats);
   }
 
   sessionModule = sessionModuleFactory.createSessionModule({
@@ -579,6 +579,21 @@
       }
     }
     if (sessionModule) sessionModule.updateChatHeader();
+  };
+
+  global.setCallQuality = function (profile) {
+    if (!webrtcModule) return;
+    if (!webrtcModule.setQualityProfile(profile)) {
+      alert('通话中无法更改质量设置');
+    }
+    if (sessionModule) sessionModule.updateChatHeader();
+  };
+
+  global.setAudioProcessing = function (setting, enabled) {
+    if (!webrtcModule) return;
+    if (!webrtcModule.setAudioProcessing(setting, Boolean(enabled))) {
+      alert('通话中无法更改麦克风处理设置');
+    }
   };
 
   global.startAudioCall = function () {

@@ -256,13 +256,36 @@
       alert(message);
     }
 
-    function updateConnectionInfo(modeLabel, modeClass, rttMs) {
+    function formatBitrate(kbps) {
+      if (typeof kbps !== 'number' || kbps < 0) return '';
+      return kbps >= 1000 ? (Math.round(kbps / 100) / 10) + 'Mbps' : kbps + 'kbps';
+    }
+
+    function updateConnectionInfo(modeLabel, modeClass, rttMs, qualityStats) {
       var el = document.getElementById('callConnInfo');
       if (!el) return;
       el.style.display = 'flex';
       var html = '<span class="call-conn-mode ' + modeClass + '">' + modeLabel + '</span>';
       if (typeof rttMs === 'number' && rttMs >= 0) {
         html += '<span>' + rttMs + 'ms</span>';
+      }
+      if (qualityStats) {
+        var details = [];
+        if (qualityStats.profileLabel) details.push(qualityStats.profileLabel);
+        if (qualityStats.width && qualityStats.height) {
+          var videoText = qualityStats.width + '×' + qualityStats.height;
+          if (qualityStats.fps) videoText += ' ' + qualityStats.fps + 'fps';
+          if (typeof qualityStats.videoKbps === 'number') videoText += ' ' + formatBitrate(qualityStats.videoKbps);
+          details.push(videoText);
+        } else if (typeof qualityStats.videoKbps === 'number') {
+          details.push('视频 ' + formatBitrate(qualityStats.videoKbps));
+        }
+        if (typeof qualityStats.audioKbps === 'number') details.push('音频 ' + formatBitrate(qualityStats.audioKbps));
+        if (typeof qualityStats.lossPercent === 'number') details.push('丢包 ' + qualityStats.lossPercent + '%');
+        if (typeof qualityStats.jitterMs === 'number') details.push('抖动 ' + qualityStats.jitterMs + 'ms');
+        if (details.length > 0) {
+          html += '<span class="call-quality-stats">' + details.join(' · ') + '</span>';
+        }
       }
       el.innerHTML = html;
     }
