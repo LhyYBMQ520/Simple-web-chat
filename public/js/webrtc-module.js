@@ -11,6 +11,7 @@
     var bufferLocalCandidates = false;
     var bufferedLocalCandidates = [];
     var remoteRelayProtocols = Object.create(null);
+    var hasConnectedOnce = false;
 
     function getIceServers() {
       if (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.webrtc && window.__CHAT_CONFIG__.webrtc.iceServers) {
@@ -95,10 +96,11 @@
           ' | 远端候选: ' + (pc.remoteDescription ? pc.remoteDescription.type : 'none'));
 
         if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-          showReconnectingState();
+          showPendingConnectionState();
           scheduleIceRecovery(pc.iceConnectionState === 'failed' ? 0 : 1500);
         }
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          hasConnectedOnce = true;
           clearRecoveryTimers();
           restartInProgress = false;
           // Log the actual candidate pair being used
@@ -126,7 +128,7 @@
 
       pc.onconnectionstatechange = function () {
         if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-          showReconnectingState();
+          showPendingConnectionState();
           scheduleIceRecovery(pc.connectionState === 'failed' ? 0 : 1500);
         }
       };
@@ -235,6 +237,7 @@
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
       remoteRelayProtocols = Object.create(null);
+      hasConnectedOnce = false;
 
       if (handlers.onCallStateChange) {
         handlers.onCallStateChange('calling', callType);
@@ -285,6 +288,7 @@
       wrtc.activeIceTransportPolicy = 'all';
       wrtc.pendingCandidates = [];
       remoteRelayProtocols = Object.create(null);
+      hasConnectedOnce = false;
       // Buffer ICE candidates that arrive before the PC is created.
       // Without this, the caller's early srflx/host candidates are discarded,
       // forcing the connection through relay (whose candidates arrive later).
@@ -695,6 +699,25 @@
       lastModeClass = '';
     }
 
+    function showConnectingState() {
+      if (handlers.onCallStatusChange) {
+        handlers.onCallStatusChange('正在连接...');
+      }
+      if (handlers.onConnectionInfo) {
+        handlers.onConnectionInfo('连接中…', 'connecting', null);
+      }
+      lastModeLabel = '';
+      lastModeClass = '';
+    }
+
+    function showPendingConnectionState() {
+      if (hasConnectedOnce) {
+        showReconnectingState();
+      } else {
+        showConnectingState();
+      }
+    }
+
     function clearRecoveryTimers() {
       if (disconnectTimer) {
         clearTimeout(disconnectTimer);
@@ -717,7 +740,7 @@
     function requestIceRecovery() {
       if (wrtc.callState !== 'connected' || !wrtc.pc || !wrtc.callPeerId) return;
 
-      showReconnectingState();
+      showPendingConnectionState();
       if (wsModule.isOpen()) {
         // The request/echo handshake confirms both signaling sockets are online.
         wsModule.sendCallRestart(wrtc.callPeerId);
@@ -753,7 +776,7 @@
 
       restartInProgress = true;
       console.log('[ICE 连接恢复] 开始完整 ICE restart 协商');
-      showReconnectingState();
+      showPendingConnectionState();
       createAndSendOffer(true).then(function (sent) {
         if (!sent) restartInProgress = false;
       });
@@ -790,10 +813,8 @@
       stopConnectionStats();
       lastModeLabel = '';
       lastModeClass = '';
-      // 发送初始状态，清除上一次通话残留的连接模式显示
-      if (handlers.onConnectionInfo) {
-        handlers.onConnectionInfo('连接中…', 'connecting', null);
-      }
+      // 首次 ICE 建连不是网络恢复，保持“正在连接”文案。
+      showConnectingState();
       // 延迟首次轮询：ICE 候选协商需要时间完成，立即轮询大概率找不到
       // nominated pair，导致 UI 保持旧状态不更新
       setTimeout(function () {
@@ -818,7 +839,7 @@
       if (!wrtc.pc || wrtc.callState !== 'connected') return;
       var pc = wrtc.pc;
       if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
-        showReconnectingState();
+        showPendingConnectionState();
         return;
       }
 
@@ -1012,6 +1033,7 @@
       wrtc.prePcCandidates = [];
       wrtc.micAudioTrack = null;
       remoteRelayProtocols = Object.create(null);
+      hasConnectedOnce = false;
     }
 
     function getCallState() {
