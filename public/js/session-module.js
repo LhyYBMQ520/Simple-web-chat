@@ -29,6 +29,7 @@
           : forceRelay
             ? '已开启：本端发起的新通话仅使用 TURN 中继'
             : '已关闭：新通话自动选择 LAN、P2P 或 TURN';
+      const callMenuTitle = isInCall ? '通话进行中' : '选择通话方式';
       document.getElementById('title').innerHTML = `
         <button class="back-btn" onclick="backToSessions()" title="返回">
           <i class="fa-solid fa-chevron-left"></i>
@@ -44,18 +45,40 @@
             <span class="relay-policy-track"><span class="relay-policy-thumb"></span></span>
             <span class="relay-policy-label">中继</span>
           </label>
-          <button class="call-btn ${isInCall && state.webrtc.callType === 'audio' ? 'active-call' : ''}" onclick="startAudioCall()" title="语音通话" ${isInCall ? 'disabled' : ''}>
-            <i class="fa-solid fa-phone"></i>
-          </button>
-          <button class="call-btn ${isInCall && state.webrtc.callType === 'video' ? 'active-call' : ''}" onclick="startVideoCall()" title="视频通话" ${isInCall ? 'disabled' : ''}>
-            <i class="fa-solid fa-video"></i>
-          </button>
-          <button class="call-btn ${isInCall && state.webrtc.callType === 'screen' ? 'active-call' : ''}" onclick="startScreenShare()" title="屏幕共享" ${isInCall ? 'disabled' : ''}>
-            <i class="fa-solid fa-desktop"></i>
-          </button>
+          <details class="call-menu ${isInCall ? 'locked' : ''}">
+            <summary class="call-menu-trigger ${isInCall ? 'active-call' : ''}" title="${callMenuTitle}" aria-label="${callMenuTitle}" aria-disabled="${isInCall ? 'true' : 'false'}" onclick="if (this.parentElement.classList.contains('locked')) event.preventDefault()">
+              <i class="fa-solid fa-phone"></i>
+              <i class="fa-solid fa-chevron-down call-menu-chevron"></i>
+            </summary>
+            <div class="call-menu-panel" role="menu" aria-label="通话方式">
+              <button type="button" class="call-menu-option" role="menuitem" onclick="startAudioCall()">
+                <i class="fa-solid fa-phone"></i>
+                <span>语音通话</span>
+              </button>
+              <button type="button" class="call-menu-option" role="menuitem" onclick="startVideoCall()">
+                <i class="fa-solid fa-video"></i>
+                <span>视频通话</span>
+              </button>
+              <button type="button" class="call-menu-option" role="menuitem" onclick="startScreenShare()">
+                <i class="fa-solid fa-desktop"></i>
+                <span>屏幕共享</span>
+              </button>
+            </div>
+          </details>
         </div>
       `;
     }
+
+    document.addEventListener('click', function (event) {
+      const menu = document.querySelector('.call-menu[open]');
+      if (menu && !menu.contains(event.target)) menu.removeAttribute('open');
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape') return;
+      const menu = document.querySelector('.call-menu[open]');
+      if (menu) menu.removeAttribute('open');
+    });
 
     function renderSessions() {
       const html = state.sessions.map(i => {
