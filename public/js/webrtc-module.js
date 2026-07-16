@@ -12,6 +12,7 @@
     var bufferedLocalCandidates = [];
     var remoteRelayProtocols = Object.create(null);
     var hasConnectedOnce = false;
+    var SCREEN_CAPTURE_UNSUPPORTED_MESSAGE = '当前浏览器/系统未作兼容，或当前浏览器/系统不支持此功能。';
 
     function getIceServers() {
       if (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.webrtc && window.__CHAT_CONFIG__.webrtc.iceServers) {
@@ -158,6 +159,96 @@
       if (foundation) remoteRelayProtocols[foundation] = String(candidate.relayProtocol).toLowerCase();
     }
 
+    function isAndroidPlatform() {
+      return /Android/i.test(String(navigator.userAgent || ''));
+    }
+
+    function createScreenCaptureUnsupportedError(cause) {
+      var error = new Error(SCREEN_CAPTURE_UNSUPPORTED_MESSAGE);
+      error.name = 'NotSupportedError';
+      error.screenCaptureUnsupported = true;
+      if (cause) error.cause = cause;
+      return error;
+    }
+
+    function isScreenCaptureUnsupportedError(err) {
+      return Boolean(err && (
+        err.screenCaptureUnsupported ||
+        err.name === 'NotSupportedError' ||
+        err.name === 'SecurityError' ||
+        err.name === 'TypeError'
+      ));
+    }
+
+    function getScreenCaptureErrorMessage(err) {
+      if (isScreenCaptureUnsupportedError(err)) {
+        return SCREEN_CAPTURE_UNSUPPORTED_MESSAGE;
+      }
+      if (err && err.name === 'NotAllowedError') {
+        return '已取消屏幕共享，或未授予屏幕捕捉权限';
+      }
+      if (err && err.name === 'NotReadableError') {
+        return '无法读取屏幕画面，请关闭其他屏幕录制应用后重试';
+      }
+      if (err && err.name === 'AbortError') {
+        return '屏幕共享已取消';
+      }
+      return '屏幕共享开启失败，请稍后重试';
+    }
+
+    function getDisplayMediaCompat() {
+      var mediaDevices = navigator.mediaDevices;
+      var captureContext = null;
+      var captureMethod = null;
+
+      if (mediaDevices && typeof mediaDevices.getDisplayMedia === 'function') {
+        captureContext = mediaDevices;
+        captureMethod = mediaDevices.getDisplayMedia;
+      } else if (typeof navigator.getDisplayMedia === 'function') {
+        // Compatibility fallback for browsers exposing the early API on navigator.
+        captureContext = navigator;
+        captureMethod = navigator.getDisplayMedia;
+      }
+
+      if (!captureMethod) {
+        return Promise.reject(createScreenCaptureUnsupportedError());
+      }
+
+      // Android Chromium implementations are more reliable with simple video-only
+      // constraints. Microphone audio is acquired separately below.
+      var constraints = isAndroidPlatform()
+        ? { video: true, audio: false }
+        : {
+            video: {
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              frameRate: { ideal: 30 }
+            },
+            audio: true
+          };
+
+      try {
+        return Promise.resolve(captureMethod.call(captureContext, constraints)).then(function (stream) {
+          if (!stream || typeof stream.getVideoTracks !== 'function' || stream.getVideoTracks().length === 0) {
+            if (stream && typeof stream.getTracks === 'function') {
+              stream.getTracks().forEach(function (track) { track.stop(); });
+            }
+            throw createScreenCaptureUnsupportedError();
+          }
+          return stream;
+        }).catch(function (err) {
+          if (isScreenCaptureUnsupportedError(err)) {
+            throw createScreenCaptureUnsupportedError(err);
+          }
+          throw err;
+        });
+      } catch (err) {
+        return Promise.reject(
+          isScreenCaptureUnsupportedError(err) ? createScreenCaptureUnsupportedError(err) : err
+        );
+      }
+    }
+
     function getLocalStream(callType) {
       if (callType === 'audio') {
         return navigator.mediaDevices.getUserMedia({
@@ -186,14 +277,7 @@
       }
 
       if (callType === 'screen') {
-        return navigator.mediaDevices.getDisplayMedia({
-          video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30 }
-          },
-          audio: true
-        }).then(function(screenStream) {
+        return getDisplayMediaCompat().then(function(screenStream) {
           return navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
             video: false
@@ -204,6 +288,9 @@
               screenStream.addTrack(micTrack);
             }
             return screenStream;
+          }).catch(function (err) {
+            screenStream.getTracks().forEach(function (track) { track.stop(); });
+            throw err;
           });
         });
       }
@@ -532,14 +619,13 @@
       if (wrtc.callType === 'screen') return;
 
       // Turn off camera first (mutual exclusion)
+      var restoreVideoOnFailure = false;
       if (wrtc.localStream && !wrtc.isVideoOff) {
         toggleVideo();
+        restoreVideoOnFailure = true;
       }
 
-      navigator.mediaDevices.getDisplayMedia({
-        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-        audio: true
-      }).then(function (screenStream) {
+      getDisplayMediaCompat().then(function (screenStream) {
         wrtc.screenStream = screenStream;
         wrtc.isScreenSharing = true;
 
@@ -577,8 +663,13 @@
         }
       }).catch(function (err) {
         console.error('屏幕共享失败:', err);
-        if (handlers.onCallError) {
-          handlers.onCallError('屏幕共享开启失败');
+        if (restoreVideoOnFailure && wrtc.callState === 'connected' && wrtc.isVideoOff) {
+          toggleVideo();
+        }
+        if (handlers.onScreenShareError) {
+          handlers.onScreenShareError(getScreenCaptureErrorMessage(err));
+        } else if (handlers.onCallError) {
+          handlers.onCallError(getScreenCaptureErrorMessage(err));
         }
       });
     }
@@ -970,7 +1061,9 @@
       console.error('媒体采集失败:', err);
 
       var message = '媒体设备访问失败';
-      if (err.name === 'NotAllowedError') {
+      if (wrtc.callType === 'screen') {
+        message = getScreenCaptureErrorMessage(err);
+      } else if (err.name === 'NotAllowedError') {
         message = '请授予麦克风/摄像头权限以进行通话';
       } else if (err.name === 'NotFoundError') {
         message = '未检测到麦克风或摄像头设备';

@@ -394,6 +394,10 @@
     if (sessionModule) sessionModule.updateChatHeader();
   }
 
+  function onScreenShareError(message) {
+    if (webrtcUIModule) webrtcUIModule.showError(message);
+  }
+
   function onMuteChange(isMuted) {
     if (webrtcUIModule) webrtcUIModule.updateMuteButton(isMuted);
   }
@@ -538,6 +542,7 @@
       onRemoteStream: onRemoteStream,
       onLocalStream: onLocalStream,
       onCallError: onCallError,
+      onScreenShareError: onScreenShareError,
       onMuteChange: onMuteChange,
       onVideoToggle: onVideoToggle,
       onScreenShareChange: onScreenShareChange,
