@@ -6,7 +6,8 @@
       onConfirmDelete,
       onBackToSessions,
       onRenderSessions,
-      onPersistRemarks
+      onPersistRemarks,
+      isTurnConfigured
     } = options;
 
     function updateChatHeader() {
@@ -19,20 +20,30 @@
         : state.current;
 
       const isInCall = state.webrtc && state.webrtc.callState !== 'idle';
+      const turnAvailable = typeof isTurnConfigured === 'function' && isTurnConfigured();
+      const forceRelay = turnAvailable && state.webrtc && state.webrtc.forceRelay;
+      const relayTitle = !turnAvailable
+        ? '服务端未配置 TURN，无法强制中继'
+        : isInCall
+          ? '通话中无法更改连接策略'
+          : forceRelay
+            ? '已开启：本端发起的新通话仅使用 TURN 中继'
+            : '已关闭：新通话自动选择 LAN、P2P 或 TURN';
       document.getElementById('title').innerHTML = `
         <button class="back-btn" onclick="backToSessions()" title="返回">
           <i class="fa-solid fa-chevron-left"></i>
         </button>
-        <i class="fa-solid fa-message"></i> 聊天：${displayName}
-        <span style="
-          width:10px;
-          height:10px;
-          border-radius:50%;
-          background:${dotColor};
-          display:inline-block;
-          flex-shrink:0;
-        "></span>
+        <div class="chat-header-peer">
+          <i class="fa-solid fa-message"></i>
+          <span class="chat-header-peer-name">聊天：${displayName}</span>
+          <span class="chat-header-online-dot" style="background:${dotColor};"></span>
+        </div>
         <div class="chat-header-call-actions">
+          <label class="relay-policy-toggle ${forceRelay ? 'enabled' : ''} ${!turnAvailable ? 'unavailable' : ''} ${isInCall ? 'locked' : ''}" title="${relayTitle}">
+            <input type="checkbox" onchange="toggleForceRelay(this.checked)" aria-label="强制 TURN 中继" ${forceRelay ? 'checked' : ''} ${isInCall || !turnAvailable ? 'disabled' : ''}>
+            <span class="relay-policy-track"><span class="relay-policy-thumb"></span></span>
+            <span class="relay-policy-label">中继</span>
+          </label>
           <button class="call-btn ${isInCall && state.webrtc.callType === 'audio' ? 'active-call' : ''}" onclick="startAudioCall()" title="语音通话" ${isInCall ? 'disabled' : ''}>
             <i class="fa-solid fa-phone"></i>
           </button>

@@ -10,6 +10,7 @@
     var settingRemoteDescription = false;
     var bufferLocalCandidates = false;
     var bufferedLocalCandidates = [];
+    var remoteRelayProtocols = Object.create(null);
 
     function getIceServers() {
       if (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.webrtc && window.__CHAT_CONFIG__.webrtc.iceServers) {
@@ -18,12 +19,39 @@
       return [{ urls: 'stun:stun.l.google.com:19302' }];
     }
 
-    function createPeerConnection() {
+    function isTurnConfigured() {
+      var config = window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.webrtc;
+      if (config && typeof config.turnConfigured === 'boolean') {
+        return config.turnConfigured;
+      }
+      return getIceServers().some(function (server) {
+        var urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+        return urls.some(function (url) { return /^turns?:/i.test(String(url || '')); });
+      });
+    }
+
+    function setForceRelay(enabled) {
+      if (wrtc.callState !== 'idle') return false;
+      if (enabled && !isTurnConfigured()) return false;
+      wrtc.forceRelay = Boolean(enabled);
+      localStorage.setItem('forceRelay', String(wrtc.forceRelay));
+      return true;
+    }
+
+    if (wrtc.forceRelay && !isTurnConfigured()) {
+      wrtc.forceRelay = false;
+      localStorage.setItem('forceRelay', 'false');
+    }
+
+    function createPeerConnection(iceTransportPolicy) {
+      var transportPolicy = iceTransportPolicy === 'relay' ? 'relay' : 'all';
       const pc = new RTCPeerConnection({
         iceServers: getIceServers(),
-        iceTransportPolicy: 'all',
+        iceTransportPolicy: transportPolicy,
         iceCandidatePoolSize: 1
       });
+      console.log('[WebRTC] ICE 传输策略: ' + transportPolicy +
+        (transportPolicy === 'relay' ? '（仅 TURN 中继）' : '（自动选择 LAN/P2P/TURN）'));
 
       pc.onicecandidate = function (event) {
         if (event.candidate && wrtc.callPeerId) {
@@ -35,6 +63,13 @@
           var protoMatch = candStr.match(/^\S+\s+\S+\s+(\S+)/);
           if (typMatch) { cand.candidateType = typMatch[1]; }
           if (protoMatch) { cand.protocol = protoMatch[1]; }
+          if (cand.candidateType === 'relay') {
+            cand.relayProtocol = inferRelayProtocol(event.candidate, cand);
+          }
+          if (transportPolicy === 'relay' && cand.candidateType && cand.candidateType !== 'relay') {
+            console.warn('[ICE 候选] 强制中继模式已丢弃非 relay 候选: ' + cand.candidateType);
+            return;
+          }
           if (bufferLocalCandidates) {
             bufferedLocalCandidates.push(cand);
           } else {
@@ -97,6 +132,28 @@
       };
 
       return pc;
+    }
+
+    function inferRelayProtocol(candidate, candidateJson) {
+      var nativeRelayProtocol = String(candidate.relayProtocol || candidateJson.relayProtocol || '').toLowerCase();
+      if (nativeRelayProtocol) return nativeRelayProtocol;
+      var url = String(candidate.url || candidateJson.url || '').toLowerCase();
+      var transportMatch = url.match(/[?&]transport=([^&]+)/);
+      if (transportMatch) return transportMatch[1] === 'tcp' ? 'tcp' : 'udp';
+      if (url.indexOf('turns:') === 0) return 'tls';
+      return String(candidateJson.protocol || 'udp').toLowerCase();
+    }
+
+    function getCandidateFoundation(candidate) {
+      if (candidate && candidate.foundation) return String(candidate.foundation);
+      var match = String(candidate && candidate.candidate || '').match(/^candidate:([^\s]+)/i);
+      return match ? match[1] : '';
+    }
+
+    function rememberRemoteRelayProtocol(candidate) {
+      if (!candidate || candidate.candidateType !== 'relay' || !candidate.relayProtocol) return;
+      var foundation = getCandidateFoundation(candidate);
+      if (foundation) remoteRelayProtocols[foundation] = String(candidate.relayProtocol).toLowerCase();
     }
 
     function getLocalStream(callType) {
@@ -162,13 +219,22 @@
       if (wrtc.callState !== 'idle') return;
       if (!state.current) return;
 
+      if (wrtc.forceRelay && !isTurnConfigured()) {
+        setForceRelay(false);
+        if (handlers.onCallError) handlers.onCallError('服务端未配置 TURN，无法强制中继');
+        return;
+      }
+
       wrtc.callState = 'calling';
       wrtc.callType = callType;
       wrtc.callPeerId = state.current;
+      wrtc.activeIceTransportPolicy = wrtc.forceRelay ? 'relay' : 'all';
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = (callType === 'screen');
       wrtc.pendingCandidates = [];
+      wrtc.prePcCandidates = [];
+      remoteRelayProtocols = Object.create(null);
 
       if (handlers.onCallStateChange) {
         handlers.onCallStateChange('calling', callType);
@@ -190,7 +256,7 @@
           handlers.onLocalStream(stream);
         }
 
-        wrtc.pc = createPeerConnection();
+        wrtc.pc = createPeerConnection(wrtc.activeIceTransportPolicy);
         addLocalTracksToPC(wrtc.pc, stream);
 
         bufferLocalCandidates = true;
@@ -215,7 +281,10 @@
       wrtc.callState = 'ringing';
       wrtc.callType = callType;
       wrtc.callPeerId = from;
+      // The local toggle only controls calls initiated by this browser.
+      wrtc.activeIceTransportPolicy = 'all';
       wrtc.pendingCandidates = [];
+      remoteRelayProtocols = Object.create(null);
       // Buffer ICE candidates that arrive before the PC is created.
       // Without this, the caller's early srflx/host candidates are discarded,
       // forcing the connection through relay (whose candidates arrive later).
@@ -247,7 +316,7 @@
           handlers.onLocalStream(stream);
         }
 
-        wrtc.pc = createPeerConnection();
+        wrtc.pc = createPeerConnection(wrtc.activeIceTransportPolicy);
         addLocalTracksToPC(wrtc.pc, stream);
 
         // Flush pre-PC ICE candidates (received before the PC was created)
@@ -366,6 +435,7 @@
     }
 
     function handleRemoteCandidate(from, candidate) {
+      rememberRemoteRelayProtocol(candidate);
       // If PC doesn't exist yet (callee hasn't accepted), buffer the candidate.
       // This prevents early srflx/host candidates from being lost, which would
       // force the connection through relay.
@@ -805,8 +875,14 @@
 
           if (isRelay) {
             // Connection is relayed — check the relay candidate's protocol
-            var relayProtocol = localType === 'relay' ? localProtocol : remoteProtocol;
-            if (relayProtocol === 'tcp' || relayProtocol === 'tcp-act' || relayProtocol === 'tcp-pass') {
+            var relayCandidate = localType === 'relay' ? localCandidate : remoteCandidate;
+            var relayFoundation = getCandidateFoundation(relayCandidate);
+            var relayProtocol = String(
+              relayCandidate && relayCandidate.relayProtocol ||
+              remoteRelayProtocols[relayFoundation] ||
+              (localType === 'relay' ? localProtocol : remoteProtocol)
+            ).toLowerCase();
+            if (relayProtocol === 'tcp' || relayProtocol === 'tls' || relayProtocol === 'tcp-act' || relayProtocol === 'tcp-pass') {
               modeLabel = 'TCP 中继';
               modeClass = 'relay-tcp';
             } else {
@@ -820,6 +896,10 @@
             // host+srflx/prflx is a normal public P2P path, not a LAN path.
             modeLabel = 'P2P 直连';
             modeClass = 'srflx';
+          }
+
+          if (wrtc.activeIceTransportPolicy === 'relay' && !isRelay) {
+            console.error('[WebRTC] 强制中继策略下选中了非 relay 候选对', localType, remoteType);
           }
 
           var rtt = null;
@@ -924,12 +1004,14 @@
       wrtc.callType = null;
       wrtc.callPeerId = null;
       wrtc.callStartTime = null;
+      wrtc.activeIceTransportPolicy = 'all';
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = false;
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
       wrtc.micAudioTrack = null;
+      remoteRelayProtocols = Object.create(null);
     }
 
     function getCallState() {
@@ -937,6 +1019,8 @@
         callState: wrtc.callState,
         callType: wrtc.callType,
         callPeerId: wrtc.callPeerId,
+        forceRelay: wrtc.forceRelay,
+        activeIceTransportPolicy: wrtc.activeIceTransportPolicy,
         isMuted: wrtc.isMuted,
         isVideoOff: wrtc.isVideoOff,
         isScreenSharing: wrtc.isScreenSharing
@@ -965,6 +1049,8 @@
       handleRestartRequest: handleRestartRequest,
       handleSignalingReconnected: handleSignalingReconnected,
       handleRemoteEndCall: handleRemoteEndCall,
+      isTurnConfigured: isTurnConfigured,
+      setForceRelay: setForceRelay,
       getCallState: getCallState,
       isCallActive: isCallActive
     };

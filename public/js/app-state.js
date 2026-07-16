@@ -25,6 +25,8 @@
         screenStream: null,
         callState: 'idle',
         callType: null,
+        forceRelay: localStorage.getItem('forceRelay') === 'true',
+        activeIceTransportPolicy: 'all',
         isMuted: false,
         isVideoOff: false,
         isScreenSharing: false,

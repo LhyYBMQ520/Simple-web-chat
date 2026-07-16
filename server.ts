@@ -3,7 +3,7 @@ import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import { PORT, PUBLIC_DIR, MAX_FILE_SIZE } from './src/config/constants.js';
-import { getIceServers } from './src/config/webrtc-config.js';
+import { getIceServers, hasTurnServers } from './src/config/webrtc-config.js';
 import { createUIDService } from './src/services/uid-service.js';
 import { createSessionDBService } from './src/services/session-db-service.js';
 import { createStorageService } from './src/services/storage-service.js';
@@ -18,6 +18,7 @@ app.use(express.json());
 // 注意：必须禁用缓存，否则浏览器可能使用旧的 TURN 配置
 // 导致 RTCPeerConnection 仍然携带已删除的 TURN 服务器
 app.get('/js/config.js', (_req, res) => {
+  const iceServers = getIceServers();
   res.type('application/javascript');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
@@ -25,7 +26,7 @@ app.get('/js/config.js', (_req, res) => {
   res.send(
     `window.__CHAT_CONFIG__ = {` +
     `  maxFileSize: ${MAX_FILE_SIZE},` +
-    `  webrtc: { iceServers: ${JSON.stringify(getIceServers())} }` +
+    `  webrtc: { iceServers: ${JSON.stringify(iceServers)}, turnConfigured: ${hasTurnServers()} }` +
     `};`
   );
 });
@@ -141,7 +142,7 @@ server.listen(PORT, () => {
   console.log(`[存储配置] 状态=${storageService.isConfigured() ? '已就绪' : '未配置（文件传输不可用）'}`);
 
   const iceServers = getIceServers();
-  const hasTurn = iceServers.some(s => 'username' in s);
+  const hasTurn = hasTurnServers();
   console.log(`[WebRTC] STUN 服务器: ${iceServers.filter(s => !('username' in s)).length} 个`);
   console.log(`[WebRTC] TURN 服务器: ${hasTurn ? '已配置' : '未配置（仅 STUN 直连）'}`);
 });

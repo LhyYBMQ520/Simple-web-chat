@@ -23,7 +23,7 @@ Simple-web-chat 是一个轻量级的、开箱即用的网页聊天应用。用�
 - **🖼️ 图片与文件传输**：支持发送图片（点击灯箱放大预览）和文件，通过 Cloudflare R2 对象存储直传，不占用 VPS 带宽和磁盘
 - **📶 连接状态与延迟**：会话列表标题右侧实时显示与服务器连接状态及网络延迟
 - **📱 响应式设计**：完美支持桌面端和移动端的屏幕比例（尽量吧。。。移动端的不确定性太多了）
-- **📞 音视频通话**：基于 WebRTC 的实时语音通话、视频通话和屏幕共享（带语音），支持静音、摄像头开关、连接模式显示（LAN/P2P/UDP中继/TCP中继）及 RTT 延迟；通话中切换网络时自动执行 ICE restart 恢复媒体连接
+- **📞 音视频通话**：基于 WebRTC 的实时语音通话、视频通话和屏幕共享（带语音），支持静音、摄像头开关、连接模式显示（LAN/P2P/UDP中继/TCP中继）、强制 TURN 中继及 RTT 延迟；通话中切换网络时自动执行 ICE restart 恢复媒体连接
 - **⚙️ 零配置**：开箱即用，无需复杂配置
 
 ## 🛠️ 技术栈
@@ -110,6 +110,8 @@ TURN_SERVER_URLS=turn:your-coturn-server.com:3478?transport=udp;turn:your-coturn
 TURN_USERNAME=your-username
 TURN_CREDENTIAL=your-password
 ```
+
+`TURN_SERVER_URLS` 支持使用分号、逗号或空格分隔多个 `turn:` / `turns:` 地址，建议同时配置 UDP 和 TCP 地址。
 
 > **获取 R2 凭据**：Cloudflare 控制台 → R2 → 创建存储桶 → 管理 API 令牌。Access Key 和 Secret Key 在 API 令牌页面获取。
 
@@ -218,6 +220,15 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 - **连接延迟显示**：已连接时显示与服务器的实时延迟（ms）
 - **ID 有效期**：ID 有 24 小时有效期，过期后会自动生成新 ID，相当于每个会话的有效期为 24 小时
 - **通话功能**：会话 header 右侧三个按钮分别发起语音通话、视频通话和屏幕共享（部分安卓浏览器不支持主动共享屏幕）；通话中使用悬浮窗控制按钮进行静音（屏幕共享时仅关闭麦克风）、开关摄像头、挂断等操作；屏幕共享为单向模式（发起方共享屏幕 + 语音，接收方仅语音）；连接信息区显示当前 ICE 连接模式和 RTT 延迟；网络切换时先显示“重连中…”，信令恢复后自动重新协商，无需挂断重拨
+- **强制中继**：TURN 配置有效时，会话 header 的“中继”开关可让本端发起的新通话仅使用 TURN；开关只影响发起方，不影响本端接听的来电，且通话中会锁定以避免误以为当前连接策略可即时切换
+
+### 强制 TURN 中继
+
+- 先在 `.env` 中完整配置 `TURN_SERVER_URLS`、`TURN_USERNAME` 和 `TURN_CREDENTIAL`，然后重启服务并刷新页面
+- 发起方打开会话 header 的“中继”开关后再发起语音、视频或屏幕共享，当前 `RTCPeerConnection` 使用 `iceTransportPolicy: relay`
+- 接听方无需打开开关；连接建立后，两端都应显示“UDP 中继”或“TCP 中继”，而不是 LAN/P2P
+- 开关偏好保存在浏览器本地，仅对开启开关的一端随后发起的新通话生效；已有通话和本端接听的来电仍使用自动策略
+- 未配置 TURN 时开关不可用；TURN 配置存在但服务器不可达或凭据错误时，强制中继通话将无法建立，不会自动回退到直连
 
 ### 通话中网络切换
 
@@ -303,7 +314,7 @@ Simple-web-chat/
 - **UID 状态显示**：实时显示 UID 剩余有效期，即将过期时带有警告标识
 - **输入框交互**：桌面 Enter 发送 / 移动端 Enter 换行；粘贴保留原始换行格式；自动高度扩展；空内容禁用发送；表情面板支持搜索和分类；引用回复支持
 - **文件上传**：支持图片和文件上传，预签名 URL 直传 R2；前端预检文件大小、类型，超限直接拦截；未知类型自动 fallback `application/octet-stream`；上传期间切换会话不会发错目标（入口捕获 targetId）
-- **WebRTC 通话**：语音/视频/屏幕共享三种通话模式；通话悬浮窗含远程视频 + 本地 PIP 小窗；静音/摄像头/屏幕共享控制按钮；ICE 连接模式 + RTT 延迟实时显示；使用完整 ICE restart 自动恢复 Wi-Fi/移动网络切换；SDP 发送失败自动 rollback，Offer/Answer 对应的 ICE candidate 在 SDP 发出后再释放；通话中移动端旋转不触发页面刷新
+- **WebRTC 通话**：语音/视频/屏幕共享三种通话模式；通话悬浮窗含远程视频 + 本地 PIP 小窗；静音/摄像头/屏幕共享控制按钮；发起方可选 `all` 或 `relay` ICE 传输策略；ICE 连接模式 + RTT 延迟实时显示；使用完整 ICE restart 自动恢复 Wi-Fi/移动网络切换；SDP 发送失败自动 rollback，Offer/Answer 对应的 ICE candidate 在 SDP 发出后再释放；通话中移动端旋转不触发页面刷新
 
 ## 📊 数据库设计
 
@@ -431,8 +442,8 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 {type: "callOffer", to: "peerUID", sdp: {type: "offer", sdp: "..."}}
 {type: "callAnswer", to: "peerUID", sdp: {type: "answer", sdp: "..."}}
 
-// ICE 候选（含 candidateType/protocol 解析）
-{type: "iceCandidate", to: "peerUID", candidate: {candidate: "...", sdpMid: "...", sdpMLineIndex: 0, candidateType: "host|srflx|relay", protocol: "udp|tcp"}}
+// ICE 候选（relay 候选额外携带 relayProtocol，供两端统一显示中继协议）
+{type: "iceCandidate", to: "peerUID", candidate: {candidate: "...", sdpMid: "...", sdpMLineIndex: 0, candidateType: "host|srflx|relay", protocol: "udp|tcp", relayProtocol: "udp|tcp|tls"}}
 ```
 
 ## 📅 未来计划

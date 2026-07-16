@@ -425,7 +425,8 @@
     onConfirmDelete: confirmDelete,
     onBackToSessions: backToSessions,
     onRenderSessions: render,
-    onPersistRemarks: () => appStateModule.persistRemarks(state)
+    onPersistRemarks: () => appStateModule.persistRemarks(state),
+    isTurnConfigured: () => !!(webrtcModule && webrtcModule.isTurnConfigured())
   });
 
   messageModule = messageModuleFactory.createMessageModule({
@@ -567,6 +568,18 @@
     sessionModule.confirmRemark();
   };
   global.backToSessions = backToSessions;
+
+  global.toggleForceRelay = function (enabled) {
+    if (!webrtcModule) return;
+    if (!webrtcModule.setForceRelay(Boolean(enabled))) {
+      if (webrtcModule.isCallActive()) {
+        alert('通话中无法更改强制中继设置');
+      } else {
+        alert('服务端未配置可用的 TURN 服务器');
+      }
+    }
+    if (sessionModule) sessionModule.updateChatHeader();
+  };
 
   global.startAudioCall = function () {
     if (!webrtcModule || !state.current) return;
