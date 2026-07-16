@@ -12,6 +12,7 @@
     var bufferedLocalCandidates = [];
     var remoteRelayProtocols = Object.create(null);
     var hasConnectedOnce = false;
+    var SCREEN_SHARE_UNSUPPORTED_MESSAGE = '当前浏览器/系统未作兼容，或当前浏览器/系统不支持此功能。';
 
     function getIceServers() {
       if (window.__CHAT_CONFIG__ && window.__CHAT_CONFIG__.webrtc && window.__CHAT_CONFIG__.webrtc.iceServers) {
@@ -158,6 +159,43 @@
       if (foundation) remoteRelayProtocols[foundation] = String(candidate.relayProtocol).toLowerCase();
     }
 
+    function requestDisplayMedia(constraints) {
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+        var unsupportedError = new Error(SCREEN_SHARE_UNSUPPORTED_MESSAGE);
+        unsupportedError.name = 'NotSupportedError';
+        return Promise.reject(unsupportedError);
+      }
+
+      try {
+        return Promise.resolve(navigator.mediaDevices.getDisplayMedia(constraints));
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    }
+
+    function getScreenShareErrorMessage(err) {
+      if (err && (
+        err.name === 'NotSupportedError' ||
+        err.name === 'SecurityError' ||
+        err.name === 'TypeError'
+      )) {
+        return SCREEN_SHARE_UNSUPPORTED_MESSAGE;
+      }
+      if (err && err.name === 'NotAllowedError') {
+        return '已取消屏幕共享，或未授予屏幕捕捉权限';
+      }
+      if (err && err.name === 'NotReadableError') {
+        return '无法读取屏幕画面，请关闭其他屏幕录制应用后重试';
+      }
+      if (err && err.name === 'AbortError') {
+        return '屏幕共享已取消';
+      }
+      if (err && err.name === 'InvalidStateError') {
+        return '无法启动屏幕共享，请直接点击屏幕共享按钮后重试';
+      }
+      return '屏幕共享开启失败，请稍后重试';
+    }
+
     function getLocalStream(callType) {
       if (callType === 'audio') {
         return navigator.mediaDevices.getUserMedia({
@@ -186,7 +224,7 @@
       }
 
       if (callType === 'screen') {
-        return navigator.mediaDevices.getDisplayMedia({
+        return requestDisplayMedia({
           video: {
             width: { ideal: 1920 },
             height: { ideal: 1080 },
@@ -536,7 +574,7 @@
         toggleVideo();
       }
 
-      navigator.mediaDevices.getDisplayMedia({
+      requestDisplayMedia({
         video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
         audio: true
       }).then(function (screenStream) {
@@ -578,7 +616,7 @@
       }).catch(function (err) {
         console.error('屏幕共享失败:', err);
         if (handlers.onCallError) {
-          handlers.onCallError('屏幕共享开启失败');
+          handlers.onCallError(getScreenShareErrorMessage(err));
         }
       });
     }
@@ -970,7 +1008,9 @@
       console.error('媒体采集失败:', err);
 
       var message = '媒体设备访问失败';
-      if (err.name === 'NotAllowedError') {
+      if (wrtc.callType === 'screen') {
+        message = getScreenShareErrorMessage(err);
+      } else if (err.name === 'NotAllowedError') {
         message = '请授予麦克风/摄像头权限以进行通话';
       } else if (err.name === 'NotFoundError') {
         message = '未检测到麦克风或摄像头设备';
