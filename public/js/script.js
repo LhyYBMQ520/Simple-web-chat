@@ -711,12 +711,17 @@
         alert(err && err.message ? err.message : '摄像头切换失败');
       });
     };
-    if (callAudioOutputBtn) callAudioOutputBtn.onclick = function () {
+    if (callAudioOutputBtn) callAudioOutputBtn.onclick = function (event) {
       if (!webrtcUIModule) return;
-      webrtcUIModule.switchAudioOutput().catch(function (err) {
-        alert(err && err.message ? err.message : '音频输出切换失败');
-      });
+      event.stopPropagation();
+      webrtcUIModule.toggleAudioOutputMenu();
     };
+    document.addEventListener('click', function (event) {
+      var control = document.getElementById('callAudioOutputControl');
+      if (webrtcUIModule && control && !control.contains(event.target)) {
+        webrtcUIModule.hideAudioOutputMenu();
+      }
+    });
     if (callScreenBtn) callScreenBtn.onclick = function () {
       if (!webrtcModule) return;
       var info = webrtcModule.getCallState();

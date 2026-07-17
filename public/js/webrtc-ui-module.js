@@ -77,6 +77,7 @@
     }
 
     function hideOverlay() {
+      hideAudioOutputMenu();
       var overlay = getOverlay();
       if (overlay) {
         overlay.style.display = 'none';
@@ -208,50 +209,125 @@
       btn.title = btn.dataset.switchTitle;
     }
 
-    function switchAudioOutput() {
-      var media = document.getElementById('remoteVideo');
-      if (!media || typeof media.setSinkId !== 'function') {
+    function getAudioOutputElements() {
+      return {
+        media: document.getElementById('remoteVideo'),
+        button: document.getElementById('callAudioOutputBtn'),
+        menu: document.getElementById('callAudioOutputMenu')
+      };
+    }
+
+    function hideAudioOutputMenu() {
+      var elements = getAudioOutputElements();
+      if (elements.menu) elements.menu.style.display = 'none';
+      if (elements.button) elements.button.setAttribute('aria-expanded', 'false');
+    }
+
+    function showAudioOutputMessage(message) {
+      var elements = getAudioOutputElements();
+      if (!elements.menu) return;
+      elements.menu.innerHTML = '';
+      var item = document.createElement('div');
+      item.className = 'call-audio-output-message';
+      item.textContent = message;
+      elements.menu.appendChild(item);
+      elements.menu.style.display = 'block';
+      if (elements.button) elements.button.setAttribute('aria-expanded', 'true');
+    }
+
+    function applyAudioOutput(device) {
+      var elements = getAudioOutputElements();
+      if (!elements.media || typeof elements.media.setSinkId !== 'function') {
         return Promise.reject(new Error('当前浏览器不允许网页切换听筒/免提，请使用系统音频输出设置'));
       }
-      if (!navigator.mediaDevices) {
-        return Promise.reject(new Error('当前浏览器无法获取音频输出设备'));
-      }
-
-      var selectedDevicePromise;
-      if (typeof navigator.mediaDevices.selectAudioOutput === 'function') {
-        selectedDevicePromise = navigator.mediaDevices.selectAudioOutput();
-      } else if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
-        selectedDevicePromise = navigator.mediaDevices.enumerateDevices().then(function (devices) {
-          var outputs = devices.filter(function (device) { return device.kind === 'audiooutput'; });
-          if (outputs.length < 2) {
-            throw new Error('当前浏览器未提供可切换的听筒/免提输出');
-          }
-          var currentIndex = outputs.findIndex(function (device) { return device.deviceId === media.sinkId; });
-          if (currentIndex < 0) {
-            var nonDefaultIndex = outputs.findIndex(function (device) {
-              return device.deviceId && device.deviceId !== 'default';
-            });
-            return outputs[nonDefaultIndex >= 0 ? nonDefaultIndex : 0];
-          }
-          return outputs[(currentIndex + 1) % outputs.length];
-        });
-      } else {
-        selectedDevicePromise = Promise.reject(new Error('当前浏览器无法枚举音频输出设备'));
-      }
-
-      return selectedDevicePromise.then(function (device) {
-        return media.setSinkId(device.deviceId).then(function () {
-          var btn = document.getElementById('callAudioOutputBtn');
-          var label = device.label || '音频输出';
-          if (btn) btn.title = '当前：' + label + '（点击切换）';
-          return label;
-        });
-      }).catch(function (err) {
-        if (err && err.name === 'NotAllowedError') {
-          throw new Error('请允许选择音频输出设备后重试');
-        }
-        throw err;
+      return elements.media.setSinkId(device.deviceId).then(function () {
+        var label = device.label || '音频输出';
+        if (elements.button) elements.button.title = '当前：' + label;
+        hideAudioOutputMenu();
+        return label;
       });
+    }
+
+    function createAudioOutputOption(device, index, currentSinkId) {
+      var item = document.createElement('button');
+      var isActive = device.deviceId === currentSinkId || (!currentSinkId && device.deviceId === 'default');
+      item.type = 'button';
+      item.className = 'call-audio-output-option' + (isActive ? ' active' : '');
+      item.setAttribute('role', 'menuitemradio');
+      item.setAttribute('aria-checked', String(isActive));
+
+      var icon = document.createElement('i');
+      icon.className = 'fa-solid ' + (isActive ? 'fa-check' : 'fa-volume-high');
+      var label = document.createElement('span');
+      label.textContent = device.label || ('音频输出 ' + (index + 1));
+      item.appendChild(icon);
+      item.appendChild(label);
+      item.onclick = function (event) {
+        event.stopPropagation();
+        applyAudioOutput(device).catch(function (err) {
+          showAudioOutputMessage(err && err.message ? err.message : '音频输出切换失败');
+        });
+      };
+      return item;
+    }
+
+    function renderAudioOutputMenu() {
+      var elements = getAudioOutputElements();
+      if (!elements.menu || !elements.button) return Promise.resolve(false);
+      if (!elements.media || typeof elements.media.setSinkId !== 'function') {
+        showAudioOutputMessage('当前浏览器不允许网页切换听筒/免提，请使用系统音频输出设置');
+        return Promise.resolve(false);
+      }
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+        showAudioOutputMessage('当前浏览器无法枚举音频输出设备');
+        return Promise.resolve(false);
+      }
+
+      return navigator.mediaDevices.enumerateDevices().then(function (devices) {
+        var outputs = devices.filter(function (device) { return device.kind === 'audiooutput'; });
+        elements.menu.innerHTML = '';
+        outputs.forEach(function (device, index) {
+          elements.menu.appendChild(createAudioOutputOption(device, index, elements.media.sinkId));
+        });
+
+        if (typeof navigator.mediaDevices.selectAudioOutput === 'function') {
+          var systemPicker = document.createElement('button');
+          systemPicker.type = 'button';
+          systemPicker.className = 'call-audio-output-option';
+          systemPicker.innerHTML = '<i class="fa-solid fa-ellipsis"></i><span>选择其他输出设备...</span>';
+          systemPicker.onclick = function (event) {
+            event.stopPropagation();
+            navigator.mediaDevices.selectAudioOutput().then(applyAudioOutput).catch(function (err) {
+              var message = err && err.name === 'NotAllowedError'
+                ? '已取消或未允许选择音频输出设备'
+                : (err && err.message ? err.message : '音频输出选择失败');
+              showAudioOutputMessage(message);
+            });
+          };
+          elements.menu.appendChild(systemPicker);
+        }
+
+        if (elements.menu.children.length === 0) {
+          showAudioOutputMessage('当前浏览器未提供可切换的听筒/免提输出');
+          return false;
+        }
+        elements.menu.style.display = 'block';
+        elements.button.setAttribute('aria-expanded', 'true');
+        return true;
+      }).catch(function (err) {
+        showAudioOutputMessage(err && err.message ? err.message : '音频输出设备获取失败');
+        return false;
+      });
+    }
+
+    function toggleAudioOutputMenu() {
+      var elements = getAudioOutputElements();
+      if (!elements.menu) return Promise.resolve(false);
+      if (elements.menu.style.display !== 'none') {
+        hideAudioOutputMenu();
+        return Promise.resolve(false);
+      }
+      return renderAudioOutputMenu();
     }
 
     function showIncomingCallPrompt(fromId, callType) {
@@ -299,6 +375,7 @@
     }
 
     function showCallingStatus(callType) {
+      hideAudioOutputMenu();
       var typeLabel = callType === 'audio' ? '语音通话' : callType === 'video' ? '视频通话' : '屏幕共享';
       var overlay = getOverlay();
       if (!overlay) return;
@@ -326,6 +403,7 @@
     }
 
     function showRingingStatus(callType) {
+      hideAudioOutputMenu();
       var typeLabel = callType === 'audio' ? '语音通话' : callType === 'video' ? '视频通话' : '屏幕共享';
       var overlay = getOverlay();
       if (!overlay) return;
@@ -372,6 +450,10 @@
           details.push('视频 ' + formatBitrate(qualityStats.videoKbps));
         }
         if (typeof qualityStats.audioKbps === 'number') details.push('音频 ' + formatBitrate(qualityStats.audioKbps));
+        if (qualityStats.limitationReason) {
+          var limitationLabels = { cpu: 'CPU 限制', bandwidth: '带宽限制', other: '系统限制' };
+          details.push(limitationLabels[qualityStats.limitationReason] || ('质量限制 ' + qualityStats.limitationReason));
+        }
         details.push(typeof qualityStats.lossPercent === 'number'
           ? '丢包 ' + qualityStats.lossPercent + '%'
           : '丢包 --');
@@ -400,7 +482,8 @@
       updateCameraSwitchAvailability: updateCameraSwitchAvailability,
       setCameraSwitching: setCameraSwitching,
       updateCameraFacingMode: updateCameraFacingMode,
-      switchAudioOutput: switchAudioOutput,
+      toggleAudioOutputMenu: toggleAudioOutputMenu,
+      hideAudioOutputMenu: hideAudioOutputMenu,
       showIncomingCallPrompt: showIncomingCallPrompt,
       hideIncomingCallPrompt: hideIncomingCallPrompt,
       showCallingStatus: showCallingStatus,

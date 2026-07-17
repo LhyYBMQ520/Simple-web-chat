@@ -102,7 +102,10 @@
       <button id="callMuteBtn" class="call-ctrl-btn" title="静音"><i class="fa-solid fa-microphone"></i></button>
       <button id="callVideoBtn" class="call-ctrl-btn" title="关闭摄像头" style="display:none;"><i class="fa-solid fa-video"></i></button>
       <button id="callCameraSwitchBtn" class="call-ctrl-btn" title="切换前后摄像头" style="display:none;"><i class="fa-solid fa-camera-rotate"></i></button>
-      <button id="callAudioOutputBtn" class="call-ctrl-btn" title="切换听筒/免提"><i class="fa-solid fa-volume-high"></i></button>
+      <div class="call-audio-output-control" id="callAudioOutputControl">
+        <button id="callAudioOutputBtn" class="call-ctrl-btn" title="选择音频输出" aria-haspopup="menu" aria-expanded="false"><i class="fa-solid fa-volume-high"></i></button>
+        <div id="callAudioOutputMenu" class="call-audio-output-menu" role="menu" aria-label="音频输出设备" style="display:none;"></div>
+      </div>
       <button id="callScreenBtn" class="call-ctrl-btn" title="屏幕共享" style="display:none;"><i class="fa-solid fa-desktop"></i></button>
       <button id="callEndBtn" class="call-ctrl-btn call-ctrl-end" title="挂断"><i class="fa-solid fa-phone-slash"></i></button>
     </div>

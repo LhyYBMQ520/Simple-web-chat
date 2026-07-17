@@ -1654,6 +1654,79 @@ button:hover {
   border-radius: 40px;
 }
 
+.call-audio-output-control {
+  position: relative;
+  display: flex;
+}
+
+.call-audio-output-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  z-index: 2;
+  width: max-content;
+  min-width: 210px;
+  max-width: min(300px, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+
+.call-audio-output-menu::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.98);
+  transform: rotate(45deg);
+}
+
+.call-audio-output-option {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.call-audio-output-option:hover,
+.call-audio-output-option.active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.call-audio-output-option span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-audio-output-message {
+  position: relative;
+  z-index: 1;
+  padding: 9px 10px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .call-ctrl-btn {
   width: 48px;
   height: 48px;

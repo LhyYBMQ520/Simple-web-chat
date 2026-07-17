@@ -1184,17 +1184,18 @@
         height: null,
         fps: null,
         lossPercent: null,
-        jitterMs: null
+        jitterMs: null,
+        limitationReason: null
       };
       var outbound = {
         audioBitsPerSecond: 0, videoBitsPerSecond: 0,
         hasAudioBitrate: false, hasVideoBitrate: false, hasVideo: false,
-        width: null, height: null, fps: null, jitterMs: null
+        width: null, height: null, fps: null, jitterMs: null, limitationReason: null
       };
       var inbound = {
         audioBitsPerSecond: 0, videoBitsPerSecond: 0,
         hasAudioBitrate: false, hasVideoBitrate: false, hasVideo: false,
-        width: null, height: null, fps: null, jitterMs: null
+        width: null, height: null, fps: null, jitterMs: null, limitationReason: null
       };
 
       function collectRtpMedia(stat, direction, target) {
@@ -1241,6 +1242,9 @@
           if (typeof stat.frameWidth === 'number') target.width = Math.max(target.width || 0, stat.frameWidth);
           if (typeof stat.frameHeight === 'number') target.height = Math.max(target.height || 0, stat.frameHeight);
           if (typeof stat.framesPerSecond === 'number') target.fps = Math.max(target.fps || 0, stat.framesPerSecond);
+          if (typeof stat.qualityLimitationReason === 'string' && stat.qualityLimitationReason !== 'none') {
+            target.limitationReason = stat.qualityLimitationReason;
+          }
         }
         if (typeof stat.jitter === 'number') {
           target.jitterMs = Math.max(target.jitterMs || 0, stat.jitter * 1000);
@@ -1266,6 +1270,7 @@
       quality.width = videoStats.width;
       quality.height = videoStats.height;
       quality.fps = videoStats.fps;
+      quality.limitationReason = videoStats.limitationReason;
       if (videoStats.hasVideoBitrate) quality.videoKbps = Math.round(videoStats.videoBitsPerSecond / 1000);
       if (audioStats.hasAudioBitrate) quality.audioKbps = Math.round(audioStats.audioBitsPerSecond / 1000);
       if (quality.fps !== null) quality.fps = Math.round(quality.fps);
@@ -1378,9 +1383,10 @@
 
           var isRelay = (localType === 'relay' || remoteType === 'relay');
           var isAllHost = localType === 'host' && remoteType === 'host';
+          var isIPv6HostPair = isAllHost && isIPv6Address(localAddress) && isIPv6Address(remoteAddress);
+          var isSameIPv6Lan = isIPv6HostPair && isSameIPv6Prefix64(localAddress, remoteAddress);
           var isLan = isAllHost &&
-            isPrivateHostAddress(localAddress) &&
-            isPrivateHostAddress(remoteAddress);
+            ((isPrivateHostAddress(localAddress) && isPrivateHostAddress(remoteAddress)) || isSameIPv6Lan);
 
           var modeLabel = '';
           var modeClass = '';
@@ -1402,11 +1408,11 @@
               modeClass = 'relay-udp';
             }
           } else if (isLan) {
-            modeLabel = 'LAN 直连';
+            modeLabel = isIPv6HostPair ? 'IPv6 LAN' : 'LAN 直连';
             modeClass = 'host';
           } else {
             // host+srflx/prflx is a normal public P2P path, not a LAN path.
-            modeLabel = 'P2P 直连';
+            modeLabel = isIPv6HostPair ? 'IPv6 P2P' : 'P2P 直连';
             modeClass = 'srflx';
           }
 
@@ -1423,8 +1429,8 @@
           if (modeLabel !== lastModeLabel || modeClass !== lastModeClass) {
             var prevLabel = lastModeLabel || '初始连接';
             console.log('[连接模式切换] ' + prevLabel + ' -> ' + modeLabel +
-              ' | local: ' + localType + '/' + localProtocol +
-              ' | remote: ' + remoteType + '/' + remoteProtocol +
+              ' | local: ' + localType + '/' + localProtocol + '@' + (localAddress || '?') +
+              ' | remote: ' + remoteType + '/' + remoteProtocol + '@' + (remoteAddress || '?') +
               (rtt !== null ? ' | RTT: ' + rtt + 'ms' : ''));
             lastModeLabel = modeLabel;
             lastModeClass = modeClass;
@@ -1455,6 +1461,33 @@
         (parts[0] === 192 && parts[1] === 168) ||
         (parts[0] === 169 && parts[1] === 254) ||
         parts[0] === 127;
+    }
+
+    function isIPv6Address(address) {
+      return String(address || '').replace(/^\[|\]$/g, '').indexOf(':') >= 0;
+    }
+
+    function parseIPv6Address(address) {
+      var value = String(address || '').toLowerCase().replace(/^\[|\]$/g, '').split('%')[0];
+      if (!value || value.indexOf(':') < 0 || value.indexOf('.') >= 0) return null;
+      var halves = value.split('::');
+      if (halves.length > 2) return null;
+      var left = halves[0] ? halves[0].split(':') : [];
+      var right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+      var missing = 8 - left.length - right.length;
+      if ((halves.length === 1 && missing !== 0) || missing < 0) return null;
+      var parts = left.concat(new Array(missing).fill('0'), right);
+      if (parts.length !== 8 || parts.some(function (part) { return !/^[0-9a-f]{1,4}$/.test(part); })) {
+        return null;
+      }
+      return parts.map(function (part) { return parseInt(part, 16); });
+    }
+
+    function isSameIPv6Prefix64(leftAddress, rightAddress) {
+      var left = parseIPv6Address(leftAddress);
+      var right = parseIPv6Address(rightAddress);
+      if (!left || !right) return false;
+      return left.slice(0, 4).every(function (part, index) { return part === right[index]; });
     }
 
     function handleMediaError(err) {
