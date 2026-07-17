@@ -1624,13 +1624,24 @@ button:hover {
   position: absolute;
   bottom: 12px;
   right: 12px;
-  width: 120px;
-  height: 160px;
+  width: 160px;
+  height: 90px;
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.3);
   object-fit: cover;
   background: #1e293b;
   cursor: pointer;
+}
+
+.call-local-video-screen {
+  object-fit: contain;
+}
+
+@media (orientation: portrait) {
+  .call-local-video {
+    width: 96px;
+    height: 128px;
+  }
 }
 
 /* ===== Call Controls ===== */
@@ -1664,6 +1675,11 @@ button:hover {
   background: rgba(255,255,255,0.25);
 }
 
+.call-ctrl-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .call-ctrl-btn.muted,
 .call-ctrl-btn.video-off {
   background: rgba(239, 68, 68, 0.8);
@@ -1676,6 +1692,20 @@ button:hover {
 
 .call-ctrl-end:hover {
   background: #dc2626;
+}
+
+@media (max-width: 480px) {
+  .call-controls {
+    max-width: calc(100vw - 20px);
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .call-ctrl-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 16px;
+  }
 }
 
 /* ===== Incoming Call Prompt ===== */

@@ -12,6 +12,9 @@
     var bufferedLocalCandidates = [];
     var remoteRelayProtocols = Object.create(null);
     var hasConnectedOnce = false;
+    var cameraFacingMode = 'user';
+    var cameraSwitchInProgress = false;
+    var connectionStatusPending = false;
     var SCREEN_SHARE_UNSUPPORTED_MESSAGE = '当前浏览器/系统未作兼容，或当前浏览器/系统不支持此功能。';
     var QUALITY_PROFILES = {
       auto: {
@@ -30,9 +33,9 @@
         screen: { width: 1920, height: 1080, frameRate: 15, maxBitrate: 3500000 }
       },
       high: {
-        label: '高清', audioBitrate: 64000,
-        camera: { width: 1920, height: 1080, frameRate: 30, maxBitrate: 6000000 },
-        screen: { width: 1920, height: 1080, frameRate: 30, maxBitrate: 8000000 }
+        label: '高清', audioBitrate: 96000,
+        camera: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 10000000 },
+        screen: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 12000000 }
       }
     };
 
@@ -154,8 +157,7 @@
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
           hasConnectedOnce = true;
           applyQualityToAllSenders();
-          clearRecoveryTimers();
-          restartInProgress = false;
+          markConnectionReady();
           // Log the actual candidate pair being used
           pc.getStats(null).then(function (report) {
             report.forEach(function (stat) {
@@ -173,14 +175,15 @@
               }
             });
           }).catch(function () {});
-          if (handlers.onCallStatusChange) {
-            handlers.onCallStatusChange('已连接');
-          }
         }
       };
 
       pc.onconnectionstatechange = function () {
-        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        if (pc.connectionState === 'connected') {
+          hasConnectedOnce = true;
+          markConnectionReady();
+        } else if ((pc.connectionState === 'disconnected' || pc.connectionState === 'failed') &&
+            pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
           showPendingConnectionState();
           scheduleIceRecovery(pc.connectionState === 'failed' ? 0 : 1500);
         }
@@ -273,15 +276,118 @@
       return constraints;
     }
 
-    function createVideoConstraints(kind) {
+    function createVideoConstraints(kind, facingMode) {
       var config = getActiveQualityProfile()[kind];
       var constraints = {
         width: { ideal: config.width, max: config.width },
         height: { ideal: config.height, max: config.height },
         frameRate: { ideal: config.frameRate, max: config.frameRate }
       };
-      if (kind === 'camera') constraints.facingMode = 'user';
+      if (kind === 'camera') constraints.facingMode = { ideal: facingMode || cameraFacingMode || 'user' };
       return constraints;
+    }
+
+    function refreshCameraSwitchAvailability() {
+      if (!handlers.onCameraSwitchAvailability) return;
+      if (wrtc.callState !== 'connected' || wrtc.callType !== 'video' || !navigator.mediaDevices ||
+          typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+        handlers.onCameraSwitchAvailability(false);
+        return;
+      }
+      navigator.mediaDevices.enumerateDevices().then(function (devices) {
+        var cameraCount = devices.filter(function (device) {
+          return device.kind === 'videoinput';
+        }).length;
+        if (handlers.onCameraSwitchAvailability) {
+          handlers.onCameraSwitchAvailability(
+            wrtc.callState === 'connected' && wrtc.callType === 'video' && cameraCount > 1
+          );
+        }
+      }).catch(function () {
+        if (handlers.onCameraSwitchAvailability) handlers.onCameraSwitchAvailability(false);
+      });
+    }
+
+    function switchCamera() {
+      if (cameraSwitchInProgress) return Promise.reject(new Error('摄像头正在切换中'));
+      if (wrtc.callState !== 'connected' || wrtc.callType !== 'video' || !wrtc.pc) {
+        return Promise.reject(new Error('当前通话不支持切换摄像头'));
+      }
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        return Promise.reject(new Error('当前浏览器不支持切换摄像头'));
+      }
+
+      var oldTrack = wrtc.localStream && wrtc.localStream.getVideoTracks()[0];
+      var sender = wrtc.pc.getSenders().find(function (item) {
+        return item.track && item.track.kind === 'video';
+      });
+      if (!oldTrack || !sender) return Promise.reject(new Error('未找到可切换的摄像头'));
+
+      var nextFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+      var previousFacingMode = cameraFacingMode;
+      var wasEnabled = oldTrack.enabled;
+      cameraSwitchInProgress = true;
+      if (handlers.onCameraSwitching) handlers.onCameraSwitching(true);
+
+      function acquireCamera(facingMode) {
+        return navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: createVideoConstraints('camera', facingMode)
+        });
+      }
+
+      function installCamera(stream, requestedFacingMode) {
+        var newTrack = stream.getVideoTracks()[0];
+        if (!newTrack) throw new Error('新摄像头未返回视频画面');
+        newTrack.enabled = wasEnabled;
+        setTrackContentHint(newTrack, false);
+        return sender.replaceTrack(newTrack).then(function () {
+          if (wrtc.localStream) {
+            wrtc.localStream.removeTrack(oldTrack);
+            wrtc.localStream.addTrack(newTrack);
+          }
+          var settings = typeof newTrack.getSettings === 'function' ? newTrack.getSettings() : {};
+          cameraFacingMode = settings.facingMode || requestedFacingMode;
+          wrtc.isVideoOff = !newTrack.enabled;
+          if (handlers.onLocalStream) handlers.onLocalStream(wrtc.localStream);
+          if (handlers.onCameraFacingModeChange) handlers.onCameraFacingModeChange(cameraFacingMode);
+          if (handlers.onVideoToggle) handlers.onVideoToggle(wrtc.isVideoOff);
+          return applySenderQuality(sender, newTrack, false).then(function () { return true; });
+        }).catch(function (err) {
+          newTrack.stop();
+          throw err;
+        });
+      }
+
+      // Some Android devices cannot open the rear camera while the front
+      // camera still owns the hardware, so release it before requesting the
+      // opposite facing mode. If that fails, attempt to restore the old side.
+      oldTrack.stop();
+      return acquireCamera(nextFacingMode).then(function (stream) {
+        return installCamera(stream, nextFacingMode);
+      }).catch(function (switchError) {
+        console.warn('切换目标摄像头失败，尝试恢复原摄像头:', switchError);
+        return acquireCamera(previousFacingMode).then(function (recoveryStream) {
+          return installCamera(recoveryStream, previousFacingMode).then(function () {
+            throw switchError;
+          });
+        }).catch(function (recoveryError) {
+          if (recoveryError !== switchError) {
+            console.error('原摄像头恢复失败:', recoveryError);
+            wrtc.isVideoOff = true;
+            if (handlers.onVideoToggle) handlers.onVideoToggle(true);
+          }
+          throw switchError;
+        });
+      }).catch(function (err) {
+        console.error('切换摄像头失败:', err);
+        throw new Error(err && err.name === 'NotAllowedError'
+          ? '请允许访问摄像头后重试'
+          : '摄像头切换失败，当前设备可能不支持前后摄像头切换');
+      }).finally(function () {
+        cameraSwitchInProgress = false;
+        if (handlers.onCameraSwitching) handlers.onCameraSwitching(false);
+      });
     }
 
     function logMediaStreamSettings(stream, callType) {
@@ -428,6 +534,7 @@
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = (callType === 'screen');
+      cameraFacingMode = 'user';
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
       remoteRelayProtocols = Object.create(null);
@@ -453,6 +560,7 @@
         if (handlers.onLocalStream) {
           handlers.onLocalStream(stream);
         }
+        refreshCameraSwitchAvailability();
 
         wrtc.pc = createPeerConnection(wrtc.activeIceTransportPolicy);
         addLocalTracksToPC(wrtc.pc, stream, callType);
@@ -489,6 +597,7 @@
       // Without this, the caller's early srflx/host candidates are discarded,
       // forcing the connection through relay (whose candidates arrive later).
       wrtc.prePcCandidates = [];
+      cameraFacingMode = 'user';
 
       if (handlers.onIncomingCall) {
         handlers.onIncomingCall(from, callType);
@@ -519,6 +628,7 @@
         if (handlers.onLocalStream) {
           handlers.onLocalStream(stream);
         }
+        refreshCameraSwitchAvailability();
 
         wrtc.pc = createPeerConnection(wrtc.activeIceTransportPolicy);
         addLocalTracksToPC(wrtc.pc, stream, wrtc.callType);
@@ -542,6 +652,7 @@
         if (handlers.onCallStateChange) {
           handlers.onCallStateChange('connected', wrtc.callType);
         }
+        refreshCameraSwitchAvailability();
         startConnectionStats();
 
         wsModule.sendCallAccept(wrtc.callPeerId);
@@ -565,6 +676,7 @@
       if (handlers.onCallStateChange) {
         handlers.onCallStateChange('connected', wrtc.callType);
       }
+      refreshCameraSwitchAvailability();
       startConnectionStats();
 
       wsModule.sendCallOffer(from, wrtc.pc.localDescription);
@@ -895,6 +1007,7 @@
     }
 
     function showReconnectingState() {
+      connectionStatusPending = true;
       if (handlers.onCallStatusChange) {
         handlers.onCallStatusChange('网络变化，正在恢复通话...');
       }
@@ -906,6 +1019,7 @@
     }
 
     function showConnectingState() {
+      connectionStatusPending = true;
       if (handlers.onCallStatusChange) {
         handlers.onCallStatusChange('正在连接...');
       }
@@ -922,6 +1036,14 @@
       } else {
         showConnectingState();
       }
+    }
+
+    function markConnectionReady() {
+      clearRecoveryTimers();
+      restartInProgress = false;
+      if (!connectionStatusPending) return;
+      connectionStatusPending = false;
+      if (handlers.onCallStatusChange) handlers.onCallStatusChange('已连接');
     }
 
     function clearRecoveryTimers() {
@@ -1014,13 +1136,21 @@
     var statsTimer = null;
     var lastModeLabel = '';
     var lastModeClass = '';
-    var previousOutboundSamples = Object.create(null);
+    var previousMediaSamples = Object.create(null);
+    var previousLossSamples = Object.create(null);
+    var lastLossPercent = null;
+
+    function resetQualityStatsSamples() {
+      previousMediaSamples = Object.create(null);
+      previousLossSamples = Object.create(null);
+      lastLossPercent = null;
+    }
 
     function startConnectionStats() {
       stopConnectionStats();
       lastModeLabel = '';
       lastModeClass = '';
-      previousOutboundSamples = Object.create(null);
+      resetQualityStatsSamples();
       // 首次 ICE 建连不是网络恢复，保持“正在连接”文案。
       showConnectingState();
       // 延迟首次轮询：ICE 候选协商需要时间完成，立即轮询大概率找不到
@@ -1038,7 +1168,7 @@
         clearInterval(statsTimer);
         statsTimer = null;
       }
-      previousOutboundSamples = Object.create(null);
+      resetQualityStatsSamples();
       if (handlers.onConnectionInfo) {
         handlers.onConnectionInfo(null, '', null);
       }
@@ -1056,81 +1186,139 @@
         lossPercent: null,
         jitterMs: null
       };
-      var audioBitsPerSecond = 0;
-      var videoBitsPerSecond = 0;
-      var hasAudioBitrate = false;
-      var hasVideoBitrate = false;
-      var remotePacketsLost = 0;
-      var remotePacketsReceived = 0;
-      var remoteFeedbackFound = false;
-      var fallbackPacketsLost = 0;
-      var fallbackPacketsReceived = 0;
-      var fallbackJitter = null;
+      var outbound = {
+        audioBitsPerSecond: 0, videoBitsPerSecond: 0,
+        hasAudioBitrate: false, hasVideoBitrate: false, hasVideo: false,
+        width: null, height: null, fps: null, jitterMs: null
+      };
+      var inbound = {
+        audioBitsPerSecond: 0, videoBitsPerSecond: 0,
+        hasAudioBitrate: false, hasVideoBitrate: false, hasVideo: false,
+        width: null, height: null, fps: null, jitterMs: null
+      };
 
-      report.forEach(function (stat) {
+      function collectRtpMedia(stat, direction, target) {
         var kind = stat.kind || stat.mediaType;
-        if (stat.type === 'outbound-rtp' && !stat.isRemote) {
-          var previous = previousOutboundSamples[stat.id];
-          var currentBytes = Number(stat.bytesSent);
-          var currentTimestamp = Number(stat.timestamp);
-          var currentFrames = Number(stat.framesEncoded);
-          if (previous && Number.isFinite(currentBytes) && Number.isFinite(currentTimestamp)) {
-            var elapsedSeconds = (currentTimestamp - previous.timestamp) / 1000;
-            var byteDelta = currentBytes - previous.bytes;
-            if (elapsedSeconds > 0 && byteDelta >= 0) {
-              var bitrate = byteDelta * 8 / elapsedSeconds;
-              if (kind === 'audio') {
-                audioBitsPerSecond += bitrate;
-                hasAudioBitrate = true;
-              } else if (kind === 'video') {
-                videoBitsPerSecond += bitrate;
-                hasVideoBitrate = true;
-              }
-            }
-            if (kind === 'video' && typeof stat.framesPerSecond !== 'number' &&
-                Number.isFinite(currentFrames) && Number.isFinite(previous.frames) && elapsedSeconds > 0) {
-              quality.fps = Math.max(quality.fps || 0, (currentFrames - previous.frames) / elapsedSeconds);
-            }
-          }
-          if (Number.isFinite(currentBytes) && Number.isFinite(currentTimestamp)) {
-            previousOutboundSamples[stat.id] = {
-              bytes: currentBytes,
-              timestamp: currentTimestamp,
-              frames: currentFrames
-            };
-          }
+        if (kind !== 'audio' && kind !== 'video') return;
+        if (kind === 'video') target.hasVideo = true;
 
-          if (kind === 'video') {
-            if (typeof stat.frameWidth === 'number') quality.width = Math.max(quality.width || 0, stat.frameWidth);
-            if (typeof stat.frameHeight === 'number') quality.height = Math.max(quality.height || 0, stat.frameHeight);
-            if (typeof stat.framesPerSecond === 'number') quality.fps = Math.max(quality.fps || 0, stat.framesPerSecond);
+        var bytesField = direction === 'out' ? 'bytesSent' : 'bytesReceived';
+        var framesField = direction === 'out' ? 'framesEncoded' : 'framesDecoded';
+        var currentBytes = Number(stat[bytesField]);
+        var currentTimestamp = Number(stat.timestamp);
+        var currentFrames = Number(stat[framesField]);
+        var sampleKey = direction + ':' + stat.id;
+        var previous = previousMediaSamples[sampleKey];
+
+        if (previous && Number.isFinite(currentBytes) && Number.isFinite(currentTimestamp)) {
+          var elapsedSeconds = (currentTimestamp - previous.timestamp) / 1000;
+          var byteDelta = currentBytes - previous.bytes;
+          if (elapsedSeconds > 0 && byteDelta >= 0) {
+            var bitrate = byteDelta * 8 / elapsedSeconds;
+            if (kind === 'audio') {
+              target.audioBitsPerSecond += bitrate;
+              target.hasAudioBitrate = true;
+            } else {
+              target.videoBitsPerSecond += bitrate;
+              target.hasVideoBitrate = true;
+            }
+          }
+          if (kind === 'video' && typeof stat.framesPerSecond !== 'number' &&
+              Number.isFinite(currentFrames) && Number.isFinite(previous.frames) && elapsedSeconds > 0) {
+            target.fps = Math.max(target.fps || 0, (currentFrames - previous.frames) / elapsedSeconds);
           }
         }
 
-        if (stat.type === 'remote-inbound-rtp') {
-          remoteFeedbackFound = true;
-          remotePacketsLost += Math.max(0, Number(stat.packetsLost) || 0);
-          remotePacketsReceived += Math.max(0, Number(stat.packetsReceived) || 0);
-          if (typeof stat.jitter === 'number') {
-            quality.jitterMs = Math.max(quality.jitterMs || 0, stat.jitter * 1000);
-          }
+        if (Number.isFinite(currentBytes) && Number.isFinite(currentTimestamp)) {
+          previousMediaSamples[sampleKey] = {
+            bytes: currentBytes,
+            timestamp: currentTimestamp,
+            frames: currentFrames
+          };
+        }
+
+        if (kind === 'video') {
+          if (typeof stat.frameWidth === 'number') target.width = Math.max(target.width || 0, stat.frameWidth);
+          if (typeof stat.frameHeight === 'number') target.height = Math.max(target.height || 0, stat.frameHeight);
+          if (typeof stat.framesPerSecond === 'number') target.fps = Math.max(target.fps || 0, stat.framesPerSecond);
+        }
+        if (typeof stat.jitter === 'number') {
+          target.jitterMs = Math.max(target.jitterMs || 0, stat.jitter * 1000);
+        }
+      }
+
+      report.forEach(function (stat) {
+        if (stat.type === 'outbound-rtp' && !stat.isRemote) {
+          collectRtpMedia(stat, 'out', outbound);
         } else if (stat.type === 'inbound-rtp' && !stat.isRemote) {
-          fallbackPacketsLost += Math.max(0, Number(stat.packetsLost) || 0);
-          fallbackPacketsReceived += Math.max(0, Number(stat.packetsReceived) || 0);
-          if (typeof stat.jitter === 'number') fallbackJitter = Math.max(fallbackJitter || 0, stat.jitter * 1000);
+          collectRtpMedia(stat, 'in', inbound);
+        } else if (stat.type === 'remote-inbound-rtp' && typeof stat.jitter === 'number') {
+          outbound.jitterMs = Math.max(outbound.jitterMs || 0, stat.jitter * 1000);
         }
       });
 
-      if (hasAudioBitrate) quality.audioKbps = Math.round(audioBitsPerSecond / 1000);
-      if (hasVideoBitrate) quality.videoKbps = Math.round(videoBitsPerSecond / 1000);
+      // A screen-share viewer has no outbound video. In that case report the
+      // actually received screen resolution/FPS/bitrate instead of leaving
+      // those fields blank. Normal video calls continue to show local send data.
+      var videoStats = outbound.hasVideo ? outbound : inbound;
+      var preferInbound = !outbound.hasVideo && inbound.hasVideo;
+      var audioStats = outbound.hasAudioBitrate ? outbound : inbound;
+      quality.width = videoStats.width;
+      quality.height = videoStats.height;
+      quality.fps = videoStats.fps;
+      if (videoStats.hasVideoBitrate) quality.videoKbps = Math.round(videoStats.videoBitsPerSecond / 1000);
+      if (audioStats.hasAudioBitrate) quality.audioKbps = Math.round(audioStats.audioBitsPerSecond / 1000);
       if (quality.fps !== null) quality.fps = Math.round(quality.fps);
-      if (quality.jitterMs !== null) quality.jitterMs = Math.round(quality.jitterMs);
+      var selectedJitter = preferInbound ? inbound.jitterMs : outbound.jitterMs;
+      if (selectedJitter === null) selectedJitter = preferInbound ? outbound.jitterMs : inbound.jitterMs;
+      if (selectedJitter !== null) quality.jitterMs = Math.round(selectedJitter);
 
-      var packetsLost = remoteFeedbackFound ? remotePacketsLost : fallbackPacketsLost;
-      var packetsReceived = remoteFeedbackFound ? remotePacketsReceived : fallbackPacketsReceived;
-      var packetTotal = packetsLost + packetsReceived;
-      if (packetTotal > 0) quality.lossPercent = Math.round(packetsLost * 1000 / packetTotal) / 10;
-      if (!remoteFeedbackFound && fallbackJitter !== null) quality.jitterMs = Math.round(fallbackJitter);
+      function collectLoss(type, samplePrefix) {
+        var lostDelta = 0;
+        var totalDelta = 0;
+        var hasUsableSample = false;
+
+        report.forEach(function (stat) {
+          if (stat.type !== type || (type === 'inbound-rtp' && stat.isRemote)) return;
+          var lost = Number(stat.packetsLost);
+          if (!Number.isFinite(lost) || lost < 0) lost = 0;
+
+          var received = Number(stat.packetsReceived);
+          var total = Number.isFinite(received) && received >= 0 ? received + lost : null;
+          if (total === null && type === 'remote-inbound-rtp' && stat.localId) {
+            var relatedOutbound = report.get(stat.localId);
+            var packetsSent = relatedOutbound && Number(relatedOutbound.packetsSent);
+            if (Number.isFinite(packetsSent) && packetsSent >= 0) total = packetsSent;
+          }
+          if (!Number.isFinite(total) || total <= 0 || lost > total) return;
+
+          var key = samplePrefix + ':' + stat.id;
+          var previous = previousLossSamples[key];
+          var currentLostDelta = lost;
+          var currentTotalDelta = total;
+          if (previous && lost >= previous.lost && total >= previous.total) {
+            currentLostDelta = lost - previous.lost;
+            currentTotalDelta = total - previous.total;
+          }
+          previousLossSamples[key] = { lost: lost, total: total };
+          if (currentTotalDelta > 0 && currentLostDelta >= 0 && currentLostDelta <= currentTotalDelta) {
+            lostDelta += currentLostDelta;
+            totalDelta += currentTotalDelta;
+            hasUsableSample = true;
+          }
+        });
+
+        return hasUsableSample && totalDelta >= 20
+          ? Math.round(lostDelta * 1000 / totalDelta) / 10
+          : null;
+      }
+
+      var outboundLoss = collectLoss('remote-inbound-rtp', 'remote');
+      var inboundLoss = collectLoss('inbound-rtp', 'inbound');
+      var currentLoss = preferInbound ? inboundLoss : outboundLoss;
+      if (currentLoss === null) currentLoss = preferInbound ? outboundLoss : inboundLoss;
+      if (currentLoss !== null) lastLossPercent = currentLoss;
+      quality.lossPercent = lastLossPercent;
       return quality;
     }
 
@@ -1165,6 +1353,9 @@
         }
 
         if (selectedPair) {
+          // A nominated pair with fresh stats proves media recovered even if a
+          // browser omitted or reordered the final connection-state event.
+          markConnectionReady();
           // Fetch both local and remote candidates to correctly determine connection mode
           var localCandidate = null;
           var remoteCandidate = null;
@@ -1299,6 +1490,8 @@
     function cleanupMedia() {
       clearRecoveryTimers();
       restartInProgress = false;
+      connectionStatusPending = false;
+      cameraSwitchInProgress = false;
       makingOffer = false;
       ignoreOffer = false;
       settingRemoteDescription = false;
@@ -1320,6 +1513,7 @@
         wrtc.pc.close();
         wrtc.pc = null;
       }
+      if (handlers.onCameraSwitchAvailability) handlers.onCameraSwitchAvailability(false);
     }
 
     function resetCallState() {
@@ -1335,6 +1529,7 @@
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
       wrtc.micAudioTrack = null;
+      cameraFacingMode = 'user';
       remoteRelayProtocols = Object.create(null);
       hasConnectedOnce = false;
     }
@@ -1368,6 +1563,7 @@
       endCall: endCall,
       toggleMute: toggleMute,
       toggleVideo: toggleVideo,
+      switchCamera: switchCamera,
       startScreenShare: startScreenShare,
       stopScreenShare: stopScreenShare,
       handleIncomingCall: handleIncomingCall,

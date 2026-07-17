@@ -33,11 +33,18 @@
       var localVideo = document.getElementById('localVideo');
       var muteBtn = document.getElementById('callMuteBtn');
       var videoBtn = document.getElementById('callVideoBtn');
+      var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
+      var audioOutputBtn = document.getElementById('callAudioOutputBtn');
       var screenBtn = document.getElementById('callScreenBtn');
 
       if (remoteVideo) remoteVideo.style.display = isVideo ? 'block' : 'none';
-      if (localVideo && callType !== 'screen') {
-        localVideo.style.display = (callType === 'video') ? 'block' : 'none';
+      if (localVideo) {
+        localVideo.className = callType === 'screen'
+          ? 'call-local-video call-local-video-screen'
+          : 'call-local-video';
+        localVideo.style.display = localVideo.srcObject && localVideo.srcObject.getVideoTracks().length > 0
+          ? 'block'
+          : 'none';
       }
 
       if (videoBtn) {
@@ -46,6 +53,8 @@
       if (screenBtn) {
         screenBtn.style.display = 'none';
       }
+      if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
+      if (audioOutputBtn) audioOutputBtn.style.display = 'flex';
 
       // 每次打开通话界面时重置控制按钮状态，避免上次通话的残留 UI 状态
       if (muteBtn) {
@@ -86,6 +95,10 @@
       var localVideo = document.getElementById('localVideo');
       if (remoteVideo) { remoteVideo.srcObject = null; }
       if (localVideo) { localVideo.srcObject = null; }
+      var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
+      var audioOutputBtn = document.getElementById('callAudioOutputBtn');
+      if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
+      if (audioOutputBtn) audioOutputBtn.style.display = 'none';
     }
 
     function updateStatusText(text) {
@@ -172,6 +185,75 @@
       }
     }
 
+    function updateCameraSwitchAvailability(available) {
+      var btn = document.getElementById('callCameraSwitchBtn');
+      if (!btn) return;
+      btn.style.display = available ? 'flex' : 'none';
+      btn.disabled = false;
+    }
+
+    function setCameraSwitching(isSwitching) {
+      var btn = document.getElementById('callCameraSwitchBtn');
+      if (!btn) return;
+      btn.disabled = Boolean(isSwitching);
+      btn.title = isSwitching
+        ? '正在切换摄像头...'
+        : (btn.dataset.switchTitle || '切换前后摄像头');
+    }
+
+    function updateCameraFacingMode(facingMode) {
+      var btn = document.getElementById('callCameraSwitchBtn');
+      if (!btn) return;
+      btn.dataset.switchTitle = facingMode === 'environment' ? '切换到前置摄像头' : '切换到后置摄像头';
+      btn.title = btn.dataset.switchTitle;
+    }
+
+    function switchAudioOutput() {
+      var media = document.getElementById('remoteVideo');
+      if (!media || typeof media.setSinkId !== 'function') {
+        return Promise.reject(new Error('当前浏览器不允许网页切换听筒/免提，请使用系统音频输出设置'));
+      }
+      if (!navigator.mediaDevices) {
+        return Promise.reject(new Error('当前浏览器无法获取音频输出设备'));
+      }
+
+      var selectedDevicePromise;
+      if (typeof navigator.mediaDevices.selectAudioOutput === 'function') {
+        selectedDevicePromise = navigator.mediaDevices.selectAudioOutput();
+      } else if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
+        selectedDevicePromise = navigator.mediaDevices.enumerateDevices().then(function (devices) {
+          var outputs = devices.filter(function (device) { return device.kind === 'audiooutput'; });
+          if (outputs.length < 2) {
+            throw new Error('当前浏览器未提供可切换的听筒/免提输出');
+          }
+          var currentIndex = outputs.findIndex(function (device) { return device.deviceId === media.sinkId; });
+          if (currentIndex < 0) {
+            var nonDefaultIndex = outputs.findIndex(function (device) {
+              return device.deviceId && device.deviceId !== 'default';
+            });
+            return outputs[nonDefaultIndex >= 0 ? nonDefaultIndex : 0];
+          }
+          return outputs[(currentIndex + 1) % outputs.length];
+        });
+      } else {
+        selectedDevicePromise = Promise.reject(new Error('当前浏览器无法枚举音频输出设备'));
+      }
+
+      return selectedDevicePromise.then(function (device) {
+        return media.setSinkId(device.deviceId).then(function () {
+          var btn = document.getElementById('callAudioOutputBtn');
+          var label = device.label || '音频输出';
+          if (btn) btn.title = '当前：' + label + '（点击切换）';
+          return label;
+        });
+      }).catch(function (err) {
+        if (err && err.name === 'NotAllowedError') {
+          throw new Error('请允许选择音频输出设备后重试');
+        }
+        throw err;
+      });
+    }
+
     function showIncomingCallPrompt(fromId, callType) {
       var prompt = getPrompt();
       if (!prompt) return;
@@ -227,11 +309,15 @@
       var remoteVideo = document.getElementById('remoteVideo');
       var localVideo = document.getElementById('localVideo');
       var videoBtn = document.getElementById('callVideoBtn');
+      var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
+      var audioOutputBtn = document.getElementById('callAudioOutputBtn');
       var screenBtn = document.getElementById('callScreenBtn');
 
       if (remoteVideo) remoteVideo.style.display = 'none';
       if (localVideo) localVideo.style.display = 'none';
       if (videoBtn) videoBtn.style.display = 'none';
+      if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
+      if (audioOutputBtn) audioOutputBtn.style.display = 'none';
       if (screenBtn) screenBtn.style.display = 'none';
 
       updateStatusText('正在呼叫... (' + typeLabel + ')');
@@ -246,6 +332,11 @@
 
       overlay.style.display = 'flex';
       overlay.className = 'call-overlay call-overlay-audio';
+
+      var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
+      var audioOutputBtn = document.getElementById('callAudioOutputBtn');
+      if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
+      if (audioOutputBtn) audioOutputBtn.style.display = 'none';
 
       updateStatusText(typeLabel + '来电...');
       var dur = document.getElementById('callDuration');
@@ -281,7 +372,9 @@
           details.push('视频 ' + formatBitrate(qualityStats.videoKbps));
         }
         if (typeof qualityStats.audioKbps === 'number') details.push('音频 ' + formatBitrate(qualityStats.audioKbps));
-        if (typeof qualityStats.lossPercent === 'number') details.push('丢包 ' + qualityStats.lossPercent + '%');
+        details.push(typeof qualityStats.lossPercent === 'number'
+          ? '丢包 ' + qualityStats.lossPercent + '%'
+          : '丢包 --');
         if (typeof qualityStats.jitterMs === 'number') details.push('抖动 ' + qualityStats.jitterMs + 'ms');
         if (details.length > 0) {
           html += '<span class="call-quality-stats">' + details.join(' · ') + '</span>';
@@ -304,6 +397,10 @@
       updateMuteButton: updateMuteButton,
       updateVideoButton: updateVideoButton,
       updateScreenShareButton: updateScreenShareButton,
+      updateCameraSwitchAvailability: updateCameraSwitchAvailability,
+      setCameraSwitching: setCameraSwitching,
+      updateCameraFacingMode: updateCameraFacingMode,
+      switchAudioOutput: switchAudioOutput,
       showIncomingCallPrompt: showIncomingCallPrompt,
       hideIncomingCallPrompt: hideIncomingCallPrompt,
       showCallingStatus: showCallingStatus,

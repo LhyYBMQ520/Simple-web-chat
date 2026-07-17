@@ -406,6 +406,18 @@
     if (webrtcUIModule) webrtcUIModule.updateScreenShareButton(isSharing);
   }
 
+  function onCameraSwitchAvailability(available) {
+    if (webrtcUIModule) webrtcUIModule.updateCameraSwitchAvailability(available);
+  }
+
+  function onCameraSwitching(isSwitching) {
+    if (webrtcUIModule) webrtcUIModule.setCameraSwitching(isSwitching);
+  }
+
+  function onCameraFacingModeChange(facingMode) {
+    if (webrtcUIModule) webrtcUIModule.updateCameraFacingMode(facingMode);
+  }
+
   function onCallStatusChange(text) {
     if (webrtcUIModule) webrtcUIModule.updateStatusText(text);
   }
@@ -541,6 +553,9 @@
       onMuteChange: onMuteChange,
       onVideoToggle: onVideoToggle,
       onScreenShareChange: onScreenShareChange,
+      onCameraSwitchAvailability: onCameraSwitchAvailability,
+      onCameraSwitching: onCameraSwitching,
+      onCameraFacingModeChange: onCameraFacingModeChange,
       onCallStatusChange: onCallStatusChange,
       onConnectionInfo: onConnectionInfo,
       onIncomingCall: function () {}
@@ -683,11 +698,25 @@
     // Wire call overlay control buttons
     var callMuteBtn = document.getElementById('callMuteBtn');
     var callVideoBtn = document.getElementById('callVideoBtn');
+    var callCameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
+    var callAudioOutputBtn = document.getElementById('callAudioOutputBtn');
     var callScreenBtn = document.getElementById('callScreenBtn');
     var callEndBtn = document.getElementById('callEndBtn');
 
     if (callMuteBtn) callMuteBtn.onclick = function () { if (webrtcModule) webrtcModule.toggleMute(); };
     if (callVideoBtn) callVideoBtn.onclick = function () { if (webrtcModule) webrtcModule.toggleVideo(); };
+    if (callCameraSwitchBtn) callCameraSwitchBtn.onclick = function () {
+      if (!webrtcModule) return;
+      webrtcModule.switchCamera().catch(function (err) {
+        alert(err && err.message ? err.message : '摄像头切换失败');
+      });
+    };
+    if (callAudioOutputBtn) callAudioOutputBtn.onclick = function () {
+      if (!webrtcUIModule) return;
+      webrtcUIModule.switchAudioOutput().catch(function (err) {
+        alert(err && err.message ? err.message : '音频输出切换失败');
+      });
+    };
     if (callScreenBtn) callScreenBtn.onclick = function () {
       if (!webrtcModule) return;
       var info = webrtcModule.getCallState();
