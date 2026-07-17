@@ -477,7 +477,7 @@
       if ('priority' in encoding) encoding.priority = 'high';
       if ('networkPriority' in encoding) encoding.networkPriority = 'high';
       if ('degradationPreference' in parameters) {
-        parameters.degradationPreference = isScreenVideo ? 'maintain-resolution' : 'balanced';
+        parameters.degradationPreference = isScreenVideo ? 'maintain-framerate' : 'balanced';
       }
 
       return sender.setParameters(parameters).then(function () {
