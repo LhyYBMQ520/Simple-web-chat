@@ -4,6 +4,10 @@
 
     var durationTimer = null;
     var durationSeconds = 0;
+    var currentCallType = null;
+    var currentWindowMode = 'normal';
+    var hasRemoteVideo = false;
+    var hasLocalVideo = false;
 
     function getOverlay() {
       return document.getElementById('callOverlay');
@@ -13,12 +17,51 @@
       return document.getElementById('callIncomingPrompt');
     }
 
-    function showOverlay(callType) {
+    function updatePeerLabel(peerLabel) {
+      var el = document.getElementById('callPeerLabel');
+      if (el) el.textContent = peerLabel || '';
+    }
+
+    function updateScreenVideoRole() {
+      var overlay = getOverlay();
+      if (!overlay || !overlay.classList) return;
+      overlay.classList.toggle(
+        'call-screen-local-source',
+        currentCallType === 'screen' && hasLocalVideo && !hasRemoteVideo
+      );
+    }
+
+    function setWindowMode(mode) {
+      var overlay = getOverlay();
+      if (!overlay || !currentCallType) return false;
+      if (mode === 'focus' && currentCallType === 'audio') return false;
+      currentWindowMode = mode === 'minimized' || mode === 'focus' ? mode : 'normal';
+      hideAudioOutputMenu();
+      overlay.className = 'call-overlay call-type-' + currentCallType + ' call-window-' + currentWindowMode;
+      updateScreenVideoRole();
+      return true;
+    }
+
+    function minimizeCallWindow() {
+      return setWindowMode('minimized');
+    }
+
+    function restoreCallWindow() {
+      return setWindowMode('normal');
+    }
+
+    function focusCallVideo() {
+      return setWindowMode('focus');
+    }
+
+    function showOverlay(callType, peerLabel) {
       var overlay = getOverlay();
       if (!overlay) return;
 
       overlay.style.display = 'flex';
-      overlay.className = 'call-overlay';
+      currentCallType = callType;
+      updatePeerLabel(peerLabel);
+      setWindowMode('normal');
 
       // 清除上一次通话的连接信息残留，避免显示旧模式（如"UDP中继"）
       var connInfo = document.getElementById('callConnInfo');
@@ -35,9 +78,10 @@
       var videoBtn = document.getElementById('callVideoBtn');
       var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
       var audioOutputBtn = document.getElementById('callAudioOutputBtn');
-      var screenBtn = document.getElementById('callScreenBtn');
+      var videoContainer = document.getElementById('callVideoContainer');
 
       if (remoteVideo) remoteVideo.style.display = isVideo ? 'block' : 'none';
+      if (videoContainer) videoContainer.style.display = isVideo ? 'block' : 'none';
       if (localVideo) {
         localVideo.className = callType === 'screen'
           ? 'call-local-video call-local-video-screen'
@@ -49,9 +93,6 @@
 
       if (videoBtn) {
         videoBtn.style.display = callType === 'video' ? 'flex' : 'none';
-      }
-      if (screenBtn) {
-        screenBtn.style.display = 'none';
       }
       if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
       if (audioOutputBtn) audioOutputBtn.style.display = 'flex';
@@ -81,8 +122,14 @@
       var overlay = getOverlay();
       if (overlay) {
         overlay.style.display = 'none';
+        overlay.className = 'call-overlay';
       }
       stopDurationTimer();
+      currentCallType = null;
+      currentWindowMode = 'normal';
+      hasRemoteVideo = false;
+      hasLocalVideo = false;
+      updatePeerLabel('');
 
       // 清除连接信息，防止下次通话显示旧模式
       var connInfo = document.getElementById('callConnInfo');
@@ -98,8 +145,10 @@
       if (localVideo) { localVideo.srcObject = null; }
       var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
       var audioOutputBtn = document.getElementById('callAudioOutputBtn');
+      var videoContainer = document.getElementById('callVideoContainer');
       if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
       if (audioOutputBtn) audioOutputBtn.style.display = 'none';
+      if (videoContainer) videoContainer.style.display = 'none';
     }
 
     function updateStatusText(text) {
@@ -133,17 +182,21 @@
 
     function setRemoteVideo(stream) {
       var video = document.getElementById('remoteVideo');
+      hasRemoteVideo = Boolean(stream && stream.getVideoTracks && stream.getVideoTracks().length > 0);
       if (video) {
         video.srcObject = stream;
       }
+      updateScreenVideoRole();
     }
 
     function setLocalVideo(stream) {
       var video = document.getElementById('localVideo');
+      hasLocalVideo = Boolean(stream && stream.getVideoTracks && stream.getVideoTracks().length > 0);
       if (video) {
         video.srcObject = stream;
-        video.style.display = (stream.getVideoTracks().length > 0) ? 'block' : 'none';
+        video.style.display = hasLocalVideo ? 'block' : 'none';
       }
+      updateScreenVideoRole();
     }
 
     function updateMuteButton(isMuted) {
@@ -171,18 +224,6 @@
         btn.className = 'call-ctrl-btn';
         btn.title = '关闭摄像头';
         btn.innerHTML = '<i class="fa-solid fa-video"></i>';
-      }
-    }
-
-    function updateScreenShareButton(isSharing) {
-      var btn = document.getElementById('callScreenBtn');
-      if (!btn) return;
-      if (isSharing) {
-        btn.style.display = 'flex';
-        btn.title = '停止屏幕共享';
-        btn.innerHTML = '<i class="fa-solid fa-desktop"></i>';
-      } else {
-        btn.style.display = 'none';
       }
     }
 
@@ -374,47 +415,55 @@
       }
     }
 
-    function showCallingStatus(callType) {
+    function showCallingStatus(callType, peerLabel) {
       hideAudioOutputMenu();
       var typeLabel = callType === 'audio' ? '语音通话' : callType === 'video' ? '视频通话' : '屏幕共享';
       var overlay = getOverlay();
       if (!overlay) return;
 
       overlay.style.display = 'flex';
-      overlay.className = 'call-overlay call-overlay-audio';
+      currentCallType = callType;
+      currentWindowMode = 'normal';
+      updatePeerLabel(peerLabel);
+      overlay.className = 'call-overlay call-type-' + callType + ' call-window-normal call-state-pending';
 
       var remoteVideo = document.getElementById('remoteVideo');
       var localVideo = document.getElementById('localVideo');
       var videoBtn = document.getElementById('callVideoBtn');
       var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
       var audioOutputBtn = document.getElementById('callAudioOutputBtn');
-      var screenBtn = document.getElementById('callScreenBtn');
+      var videoContainer = document.getElementById('callVideoContainer');
 
       if (remoteVideo) remoteVideo.style.display = 'none';
       if (localVideo) localVideo.style.display = 'none';
       if (videoBtn) videoBtn.style.display = 'none';
       if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
       if (audioOutputBtn) audioOutputBtn.style.display = 'none';
-      if (screenBtn) screenBtn.style.display = 'none';
+      if (videoContainer) videoContainer.style.display = 'none';
 
       updateStatusText('正在呼叫... (' + typeLabel + ')');
       var dur = document.getElementById('callDuration');
       if (dur) dur.textContent = '';
     }
 
-    function showRingingStatus(callType) {
+    function showRingingStatus(callType, peerLabel) {
       hideAudioOutputMenu();
       var typeLabel = callType === 'audio' ? '语音通话' : callType === 'video' ? '视频通话' : '屏幕共享';
       var overlay = getOverlay();
       if (!overlay) return;
 
       overlay.style.display = 'flex';
-      overlay.className = 'call-overlay call-overlay-audio';
+      currentCallType = callType;
+      currentWindowMode = 'normal';
+      updatePeerLabel(peerLabel);
+      overlay.className = 'call-overlay call-type-' + callType + ' call-window-normal call-state-pending';
 
       var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
       var audioOutputBtn = document.getElementById('callAudioOutputBtn');
+      var videoContainer = document.getElementById('callVideoContainer');
       if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
       if (audioOutputBtn) audioOutputBtn.style.display = 'none';
+      if (videoContainer) videoContainer.style.display = 'none';
 
       updateStatusText(typeLabel + '来电...');
       var dur = document.getElementById('callDuration');
@@ -473,12 +522,14 @@
     return {
       showOverlay: showOverlay,
       hideOverlay: hideOverlay,
+      minimizeCallWindow: minimizeCallWindow,
+      restoreCallWindow: restoreCallWindow,
+      focusCallVideo: focusCallVideo,
       updateStatusText: updateStatusText,
       setRemoteVideo: setRemoteVideo,
       setLocalVideo: setLocalVideo,
       updateMuteButton: updateMuteButton,
       updateVideoButton: updateVideoButton,
-      updateScreenShareButton: updateScreenShareButton,
       updateCameraSwitchAvailability: updateCameraSwitchAvailability,
       setCameraSwitching: setCameraSwitching,
       updateCameraFacingMode: updateCameraFacingMode,

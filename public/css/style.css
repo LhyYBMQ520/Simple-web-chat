@@ -1538,12 +1538,68 @@ button:hover {
   background: rgba(15, 23, 42, 0.97);
 }
 
+.call-window-actions {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.call-window-action-btn,
+.call-window-restore-btn,
+.call-focus-exit-btn {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.62);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  touch-action: manipulation;
+  backdrop-filter: blur(8px);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.call-window-action-btn:hover,
+.call-window-restore-btn:hover,
+.call-focus-exit-btn:hover {
+  background: rgba(51, 65, 85, 0.92);
+  transform: translateY(-1px);
+}
+
+.call-window-restore-btn,
+.call-focus-exit-btn {
+  display: none;
+}
+
+.call-type-audio #callFocusBtn,
+.call-state-pending .call-window-actions {
+  display: none;
+}
+
 .call-overlay-top {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   color: #fff;
+}
+
+.call-peer-label {
+  max-width: min(80vw, 720px);
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .call-status-text {
@@ -1613,6 +1669,10 @@ button:hover {
   overflow: hidden;
 }
 
+.call-type-audio .call-video-container {
+  display: none !important;
+}
+
 .call-remote-video {
   width: 100%;
   height: 100%;
@@ -1635,6 +1695,22 @@ button:hover {
 
 .call-local-video-screen {
   object-fit: contain;
+}
+
+/* 屏幕共享发起方没有远端视频，直接使用本地共享画面作为主画面。 */
+.call-screen-local-source .call-remote-video {
+  display: none !important;
+}
+
+.call-screen-local-source .call-local-video {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  display: block !important;
+  object-fit: contain;
+  cursor: default;
 }
 
 @media (orientation: portrait) {
@@ -1756,6 +1832,204 @@ button:hover {
   background: #dc2626;
 }
 
+/* ===== Minimized Call Window ===== */
+.call-window-minimized {
+  top: auto;
+  left: auto;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: min(360px, calc(100vw - 24px));
+  height: auto;
+  padding: 0;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38);
+}
+
+.call-window-minimized .call-window-actions,
+.call-window-minimized .call-focus-exit-btn,
+.call-window-minimized .call-conn-info,
+.call-window-minimized .call-controls > * {
+  display: none !important;
+}
+
+.call-window-minimized .call-window-restore-btn,
+.call-window-minimized .call-controls > #callEndBtn {
+  display: flex !important;
+}
+
+.call-window-minimized .call-window-restore-btn {
+  z-index: 5;
+}
+
+.call-window-minimized .call-controls {
+  z-index: 5;
+  padding: 0;
+  gap: 0;
+  background: transparent;
+}
+
+.call-window-minimized .call-controls > #callEndBtn,
+.call-window-minimized .call-window-restore-btn {
+  width: 38px;
+  height: 38px;
+  font-size: 14px;
+}
+
+.call-window-minimized.call-type-audio {
+  width: min(680px, calc(100vw - 24px));
+  min-height: 64px;
+  padding: 10px 12px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  border-radius: 999px;
+}
+
+.call-window-minimized.call-type-audio .call-overlay-top {
+  order: 1;
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.call-window-minimized.call-type-audio .call-peer-label {
+  min-width: 0;
+  max-width: none;
+  font-size: 13px;
+}
+
+.call-window-minimized.call-type-audio .call-status-text,
+.call-window-minimized.call-type-audio .call-duration {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.call-window-minimized.call-type-audio .call-status-text {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.call-window-minimized.call-type-audio .call-window-restore-btn {
+  position: static;
+  order: 2;
+  flex: 0 0 auto;
+}
+
+.call-window-minimized.call-type-audio .call-controls {
+  position: static;
+  order: 3;
+  flex: 0 0 auto;
+}
+
+.call-window-minimized.call-type-video,
+.call-window-minimized.call-type-screen {
+  aspect-ratio: 16 / 9;
+}
+
+.call-window-minimized.call-type-video .call-overlay-top,
+.call-window-minimized.call-type-screen .call-overlay-top {
+  display: none;
+}
+
+.call-window-minimized.call-type-video .call-video-container,
+.call-window-minimized.call-type-screen .call-video-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border-radius: 0;
+  display: block !important;
+}
+
+.call-window-minimized.call-type-video .call-local-video,
+.call-window-minimized.call-type-screen:not(.call-screen-local-source) .call-local-video {
+  display: none !important;
+}
+
+.call-window-minimized.call-type-video .call-remote-video {
+  object-fit: cover;
+}
+
+.call-window-minimized.call-type-screen .call-remote-video {
+  object-fit: contain;
+}
+
+.call-window-minimized.call-type-video .call-window-restore-btn,
+.call-window-minimized.call-type-screen .call-window-restore-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.call-window-minimized.call-type-video .call-controls,
+.call-window-minimized.call-type-screen .call-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+
+/* ===== In-page Video Focus Mode ===== */
+.call-window-focus {
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+}
+
+.call-window-focus .call-window-actions,
+.call-window-focus .call-window-restore-btn,
+.call-window-focus .call-overlay-top,
+.call-window-focus .call-controls,
+.call-window-focus .call-local-video {
+  display: none !important;
+}
+
+.call-window-focus .call-focus-exit-btn {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 6;
+  display: flex;
+}
+
+.call-window-focus .call-video-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border-radius: 0;
+  display: block !important;
+  background: #000;
+}
+
+.call-window-focus.call-type-video .call-remote-video {
+  object-fit: cover;
+}
+
+.call-window-focus.call-type-screen .call-remote-video {
+  object-fit: contain;
+}
+
+.call-window-focus.call-screen-local-source .call-local-video {
+  display: block !important;
+}
+
 @media (max-width: 480px) {
   .call-controls {
     max-width: calc(100vw - 20px);
@@ -1767,6 +2041,32 @@ button:hover {
     width: 44px;
     height: 44px;
     font-size: 16px;
+  }
+
+  .call-window-actions {
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+  }
+
+  .call-window-action-btn,
+  .call-focus-exit-btn {
+    width: 38px;
+    height: 38px;
+    font-size: 14px;
+  }
+
+  .call-window-minimized.call-type-audio {
+    gap: 7px;
+    padding: 8px 10px;
+  }
+
+  .call-window-minimized.call-type-audio .call-overlay-top {
+    grid-template-columns: minmax(72px, 1fr) auto;
+    gap: 4px 7px;
+  }
+
+  .call-window-minimized.call-type-audio .call-peer-label {
+    grid-column: 1 / -1;
   }
 }
 

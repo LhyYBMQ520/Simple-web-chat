@@ -89,12 +89,19 @@
 
   <!-- 通话悬浮层 -->
   <div id="callOverlay" class="call-overlay" style="display:none;">
+    <div class="call-window-actions" id="callWindowActions">
+      <button id="callFocusBtn" class="call-window-action-btn" title="专注全屏显示主画面" aria-label="专注全屏显示主画面"><i class="fa-solid fa-expand"></i></button>
+      <button id="callMinimizeBtn" class="call-window-action-btn" title="最小化通话窗口" aria-label="最小化通话窗口"><i class="fa-solid fa-window-minimize"></i></button>
+    </div>
+    <button id="callRestoreBtn" class="call-window-restore-btn" title="恢复通话窗口" aria-label="恢复通话窗口"><i class="fa-solid fa-window-maximize"></i></button>
+    <button id="callFocusExitBtn" class="call-focus-exit-btn" title="恢复通话窗口" aria-label="恢复通话窗口"><i class="fa-solid fa-compress"></i></button>
     <div class="call-overlay-top">
+      <span class="call-peer-label" id="callPeerLabel"></span>
       <span class="call-status-text" id="callStatusText"></span>
       <span class="call-duration" id="callDuration"></span>
       <span class="call-conn-info" id="callConnInfo" style="display:none;"></span>
     </div>
-    <div class="call-video-container">
+    <div class="call-video-container" id="callVideoContainer">
       <video id="remoteVideo" class="call-remote-video" autoplay playsinline></video>
       <video id="localVideo" class="call-local-video" autoplay playsinline muted></video>
     </div>
@@ -106,7 +113,6 @@
         <button id="callAudioOutputBtn" class="call-ctrl-btn" title="选择音频输出" aria-haspopup="menu" aria-expanded="false"><i class="fa-solid fa-volume-high"></i></button>
         <div id="callAudioOutputMenu" class="call-audio-output-menu" role="menu" aria-label="音频输出设备" style="display:none;"></div>
       </div>
-      <button id="callScreenBtn" class="call-ctrl-btn" title="屏幕共享" style="display:none;"><i class="fa-solid fa-desktop"></i></button>
       <button id="callEndBtn" class="call-ctrl-btn call-ctrl-end" title="挂断"><i class="fa-solid fa-phone-slash"></i></button>
     </div>
   </div>

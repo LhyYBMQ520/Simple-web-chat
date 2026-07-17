@@ -364,16 +364,24 @@
 
   // === WebRTC UI callbacks ===
 
+  function getCurrentCallPeerLabel() {
+    var callInfo = webrtcModule && webrtcModule.getCallState ? webrtcModule.getCallState() : null;
+    var peerId = callInfo && callInfo.callPeerId || state.current;
+    if (!peerId) return '聊天：--';
+    var remark = state.remarks && state.remarks[peerId];
+    return '聊天：' + (remark ? '(' + remark + ') ' : '') + peerId;
+  }
+
   function onCallStateChange(callState, callType) {
     if (callState === 'idle') {
       if (webrtcUIModule) webrtcUIModule.hideOverlay();
       if (webrtcUIModule) webrtcUIModule.hideIncomingCallPrompt();
     } else if (callState === 'calling') {
-      if (webrtcUIModule) webrtcUIModule.showCallingStatus(callType);
+      if (webrtcUIModule) webrtcUIModule.showCallingStatus(callType, getCurrentCallPeerLabel());
     } else if (callState === 'connected') {
-      if (webrtcUIModule) webrtcUIModule.showOverlay(callType);
+      if (webrtcUIModule) webrtcUIModule.showOverlay(callType, getCurrentCallPeerLabel());
     } else if (callState === 'ringing') {
-      if (webrtcUIModule) webrtcUIModule.showRingingStatus(callType);
+      if (webrtcUIModule) webrtcUIModule.showRingingStatus(callType, getCurrentCallPeerLabel());
     }
     // Refresh chat header to update call button states
     if (sessionModule) sessionModule.updateChatHeader();
@@ -400,10 +408,6 @@
 
   function onVideoToggle(isVideoOff) {
     if (webrtcUIModule) webrtcUIModule.updateVideoButton(isVideoOff);
-  }
-
-  function onScreenShareChange(isSharing) {
-    if (webrtcUIModule) webrtcUIModule.updateScreenShareButton(isSharing);
   }
 
   function onCameraSwitchAvailability(available) {
@@ -552,7 +556,6 @@
       onCallError: onCallError,
       onMuteChange: onMuteChange,
       onVideoToggle: onVideoToggle,
-      onScreenShareChange: onScreenShareChange,
       onCameraSwitchAvailability: onCameraSwitchAvailability,
       onCameraSwitching: onCameraSwitching,
       onCameraFacingModeChange: onCameraFacingModeChange,
@@ -700,7 +703,10 @@
     var callVideoBtn = document.getElementById('callVideoBtn');
     var callCameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
     var callAudioOutputBtn = document.getElementById('callAudioOutputBtn');
-    var callScreenBtn = document.getElementById('callScreenBtn');
+    var callMinimizeBtn = document.getElementById('callMinimizeBtn');
+    var callRestoreBtn = document.getElementById('callRestoreBtn');
+    var callFocusBtn = document.getElementById('callFocusBtn');
+    var callFocusExitBtn = document.getElementById('callFocusExitBtn');
     var callEndBtn = document.getElementById('callEndBtn');
 
     if (callMuteBtn) callMuteBtn.onclick = function () { if (webrtcModule) webrtcModule.toggleMute(); };
@@ -722,15 +728,10 @@
         webrtcUIModule.hideAudioOutputMenu();
       }
     });
-    if (callScreenBtn) callScreenBtn.onclick = function () {
-      if (!webrtcModule) return;
-      var info = webrtcModule.getCallState();
-      if (info.isScreenSharing) {
-        webrtcModule.stopScreenShare();
-      } else {
-        webrtcModule.startScreenShare();
-      }
-    };
+    if (callMinimizeBtn) callMinimizeBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.minimizeCallWindow(); };
+    if (callRestoreBtn) callRestoreBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.restoreCallWindow(); };
+    if (callFocusBtn) callFocusBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.focusCallVideo(); };
+    if (callFocusExitBtn) callFocusExitBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.restoreCallWindow(); };
     if (callEndBtn) callEndBtn.onclick = function () { if (webrtcModule) webrtcModule.endCall(true); };
 
     const msgInput = document.getElementById('msgInput');

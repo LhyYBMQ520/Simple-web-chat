@@ -496,8 +496,7 @@
       if (!wrtc.pc || typeof wrtc.pc.getSenders !== 'function') return;
       wrtc.pc.getSenders().forEach(function (sender) {
         if (!sender.track) return;
-        var isScreenVideo = sender.track.kind === 'video' &&
-          (wrtc.callType === 'screen' || wrtc.isScreenSharing);
+        var isScreenVideo = sender.track.kind === 'video' && wrtc.callType === 'screen';
         applySenderQuality(sender, sender.track, isScreenVideo);
       });
     }
@@ -648,7 +647,6 @@
       wrtc.activeIceTransportPolicy = wrtc.forceRelay ? 'relay' : 'all';
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
-      wrtc.isScreenSharing = (callType === 'screen');
       wrtc.systemAudioTrack = null;
       cameraFacingMode = 'user';
       wrtc.pendingCandidates = [];
@@ -765,7 +763,6 @@
         wrtc.callState = 'connected';
         wrtc.isMuted = false;
         wrtc.isVideoOff = (wrtc.callType !== 'screen');
-        wrtc.isScreenSharing = false;
 
         // 先更新 UI（showOverlay 会清除旧连接信息），再启动统计轮询
         if (handlers.onCallStateChange) {
@@ -958,97 +955,7 @@
       }
     }
 
-    function startScreenShare() {
-      if (wrtc.callState !== 'connected') return;
-      if (wrtc.isScreenSharing) return;
-      if (wrtc.callType === 'screen') return;
-
-      // Turn off camera first (mutual exclusion)
-      if (wrtc.localStream && !wrtc.isVideoOff) {
-        toggleVideo();
-      }
-
-      requestDisplayMedia({
-        video: createVideoConstraints('screen'),
-        audio: createSystemAudioConstraints()
-      }).then(configureSystemAudioTrack).then(function (screenStream) {
-        wrtc.screenStream = screenStream;
-        wrtc.isScreenSharing = true;
-
-        var screenVideoTrack = screenStream.getVideoTracks()[0];
-        if (screenVideoTrack) {
-          screenVideoTrack.onended = function () {
-            handleScreenShareEnded();
-          };
-        }
-
-        var sender = wrtc.pc.getSenders().find(function (s) {
-          return s.track && s.track.kind === 'video';
-        });
-
-        if (sender && screenVideoTrack) {
-          sender.replaceTrack(screenVideoTrack).then(function () {
-            applySenderQuality(sender, screenVideoTrack, true);
-          }).catch(function () {});
-        } else if (screenVideoTrack) {
-          sender = wrtc.pc.addTrack(screenVideoTrack, screenStream);
-          applySenderQuality(sender, screenVideoTrack, true);
-        }
-
-        var audioTrack = screenStream.getAudioTracks()[0];
-        if (audioTrack) {
-          var audioSender = wrtc.pc.getSenders().find(function (s) {
-            return s.track && s.track.kind === 'audio';
-          });
-          if (audioSender) {
-            audioSender.replaceTrack(audioTrack).then(function () {
-              applySenderQuality(audioSender, audioTrack, false);
-            }).catch(function () {});
-          }
-        }
-
-        renegotiate();
-
-        if (handlers.onScreenShareChange) {
-          handlers.onScreenShareChange(true);
-        }
-      }).catch(function (err) {
-        console.error('屏幕共享失败:', err);
-        if (handlers.onCallError) {
-          handlers.onCallError(getScreenShareErrorMessage(err));
-        }
-      });
-    }
-
-    function stopScreenShare() {
-      if (!wrtc.screenStream) return;
-
-      wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
-      wrtc.screenStream = null;
-      wrtc.systemAudioTrack = null;
-      wrtc.isScreenSharing = false;
-
-      if (wrtc.callType === 'video') {
-        // Restore camera - user needs to manually re-enable
-        wrtc.isVideoOff = true;
-        if (handlers.onVideoToggle) {
-          handlers.onVideoToggle(true);
-        }
-      }
-
-      renegotiate();
-
-      if (handlers.onScreenShareChange) {
-        handlers.onScreenShareChange(false);
-      }
-    }
-
     function handleScreenShareEnded() {
-      // Screen stream from startScreenShare (during active video call)
-      if (wrtc.screenStream) {
-        wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
-        wrtc.screenStream = null;
-      }
       wrtc.systemAudioTrack = null;
 
       // Screen stream from startCall('screen') — stored in localStream
@@ -1061,21 +968,8 @@
         // Keep audio track alive for continued voice chat
       }
 
-      wrtc.isScreenSharing = false;
-
-      if (handlers.onScreenShareChange) {
-        handlers.onScreenShareChange(false);
-      }
-
-      if (wrtc.callType === 'screen') {
-        if (handlers.onCallError) {
-          handlers.onCallError('屏幕共享已停止，已切换为纯语音通话');
-        }
-      } else {
-        wrtc.isVideoOff = true;
-        if (handlers.onVideoToggle) {
-          handlers.onVideoToggle(true);
-        }
+      if (handlers.onCallError) {
+        handlers.onCallError('屏幕共享已停止，已切换为纯语音通话');
       }
 
       renegotiate();
@@ -1658,10 +1552,6 @@
         wrtc.localStream.getTracks().forEach(function (t) { t.stop(); });
         wrtc.localStream = null;
       }
-      if (wrtc.screenStream) {
-        wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
-        wrtc.screenStream = null;
-      }
       if (wrtc.remoteStream) {
         wrtc.remoteStream = null;
       }
@@ -1681,7 +1571,6 @@
       wrtc.activeIceTransportPolicy = 'all';
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
-      wrtc.isScreenSharing = false;
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
       wrtc.micAudioTrack = null;
@@ -1705,8 +1594,7 @@
         autoGainControl: wrtc.autoGainControl,
         activeIceTransportPolicy: wrtc.activeIceTransportPolicy,
         isMuted: wrtc.isMuted,
-        isVideoOff: wrtc.isVideoOff,
-        isScreenSharing: wrtc.isScreenSharing
+        isVideoOff: wrtc.isVideoOff
       };
     }
 
@@ -1722,8 +1610,6 @@
       toggleMute: toggleMute,
       toggleVideo: toggleVideo,
       switchCamera: switchCamera,
-      startScreenShare: startScreenShare,
-      stopScreenShare: stopScreenShare,
       handleIncomingCall: handleIncomingCall,
       handleCallAccepted: handleCallAccepted,
       handleCallRejected: handleCallRejected,
