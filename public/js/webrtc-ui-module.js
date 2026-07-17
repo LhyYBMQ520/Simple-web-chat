@@ -31,7 +31,26 @@
         'call-screen-local-source',
         currentCallType === 'screen' && hasLocalVideo && !hasRemoteVideo
       );
+      updateFullscreenButtonState();
       updateMinimizedVideoSize();
+    }
+
+    function updateFullscreenButtonState() {
+      var overlay = getOverlay();
+      var button = document.getElementById('callFocusBtn');
+      if (!overlay || !button) return;
+
+      var isVideoCall = currentCallType === 'video' || currentCallType === 'screen';
+      var isLocalScreenSource = currentCallType === 'screen' && hasLocalVideo;
+      var isAvailable = isVideoCall && isFullscreenSupported(overlay);
+      var label = isLocalScreenSource
+        ? '共享发起方不能全屏预览，避免画面递归嵌套'
+        : '浏览器全屏显示主画面';
+
+      button.style.display = isAvailable ? 'flex' : 'none';
+      button.disabled = !isAvailable || isLocalScreenSource;
+      button.title = label;
+      button.setAttribute('aria-label', label);
     }
 
     function getMainVideoElement() {
@@ -177,7 +196,8 @@
 
     function focusCallVideo() {
       var overlay = getOverlay();
-      if (!overlay || currentCallType === 'audio' || !isFullscreenSupported(overlay)) {
+      var isLocalScreenSource = currentCallType === 'screen' && hasLocalVideo;
+      if (!overlay || currentCallType === 'audio' || isLocalScreenSource || !isFullscreenSupported(overlay)) {
         return Promise.resolve(false);
       }
       setWindowMode('focus');
@@ -214,7 +234,6 @@
       var videoBtn = document.getElementById('callVideoBtn');
       var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
       var audioOutputBtn = document.getElementById('callAudioOutputBtn');
-      var focusBtn = document.getElementById('callFocusBtn');
       var videoContainer = document.getElementById('callVideoContainer');
 
       if (remoteVideo) remoteVideo.style.display = isVideo ? 'block' : 'none';
@@ -233,7 +252,7 @@
       }
       if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
       if (audioOutputBtn) audioOutputBtn.style.display = 'flex';
-      if (focusBtn) focusBtn.style.display = isVideo && isFullscreenSupported(overlay) ? 'flex' : 'none';
+      updateFullscreenButtonState();
       updateMinimizedVideoSize();
 
       // 每次打开通话界面时重置控制按钮状态，避免上次通话的残留 UI 状态

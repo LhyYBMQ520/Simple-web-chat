@@ -1575,6 +1575,14 @@ button:hover {
   transform: translateY(-1px);
 }
 
+.call-window-action-btn:disabled,
+.call-window-action-btn:disabled:hover {
+  opacity: 0.45;
+  background: rgba(15, 23, 42, 0.62);
+  cursor: not-allowed;
+  transform: none;
+}
+
 .call-window-restore-btn,
 .call-focus-exit-btn {
   display: none;
@@ -2020,10 +2028,7 @@ button:hover {
   background: #000;
 }
 
-.call-window-focus.call-type-video .call-remote-video {
-  object-fit: cover;
-}
-
+.call-window-focus.call-type-video .call-remote-video,
 .call-window-focus.call-type-screen .call-remote-video {
   object-fit: contain;
 }
