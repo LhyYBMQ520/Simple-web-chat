@@ -1646,6 +1646,7 @@ button:hover {
 
 /* ===== Call Controls ===== */
 .call-controls {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1655,37 +1656,24 @@ button:hover {
 }
 
 .call-audio-output-control {
-  position: relative;
+  position: static;
   display: flex;
 }
 
 .call-audio-output-menu {
   position: absolute;
-  right: 0;
+  left: 50%;
   bottom: calc(100% + 12px);
   z-index: 2;
-  width: max-content;
-  min-width: 210px;
-  max-width: min(300px, calc(100vw - 24px));
+  width: min(300px, calc(100vw - 24px));
+  min-width: 0;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.98);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   color: #fff;
-}
-
-.call-audio-output-menu::after {
-  content: '';
-  position: absolute;
-  right: 18px;
-  bottom: -6px;
-  width: 10px;
-  height: 10px;
-  border-right: 1px solid rgba(255, 255, 255, 0.16);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(15, 23, 42, 0.98);
-  transform: rotate(45deg);
+  transform: translateX(-50%);
 }
 
 .call-audio-output-option {
@@ -1725,6 +1713,7 @@ button:hover {
   color: rgba(255, 255, 255, 0.72);
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .call-ctrl-btn {
