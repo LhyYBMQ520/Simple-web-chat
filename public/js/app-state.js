@@ -5,8 +5,8 @@
   };
 
   function loadCallQualityProfile() {
-    const value = localStorage.getItem('callQualityProfile') || 'standard';
-    return ['auto', 'low', 'standard', 'high'].includes(value) ? value : 'standard';
+    const value = localStorage.getItem('callQualityProfile') || 'auto';
+    return ['auto', 'low', 'standard', 'high'].includes(value) ? value : 'auto';
   }
 
   function loadEnabledPreference(key) {
@@ -32,11 +32,13 @@
         localStream: null,
         remoteStream: null,
         screenStream: null,
+        micAudioTrack: null,
+        systemAudioTrack: null,
         callState: 'idle',
         callType: null,
         forceRelay: localStorage.getItem('forceRelay') === 'true',
         qualityProfile: loadCallQualityProfile(),
-        activeQualityProfile: 'standard',
+        activeQualityProfile: 'auto',
         echoCancellation: loadEnabledPreference('callEchoCancellation'),
         noiseSuppression: loadEnabledPreference('callNoiseSuppression'),
         autoGainControl: loadEnabledPreference('callAutoGainControl'),

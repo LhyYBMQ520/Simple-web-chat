@@ -22,7 +22,7 @@
       const isInCall = state.webrtc && state.webrtc.callState !== 'idle';
       const turnAvailable = typeof isTurnConfigured === 'function' && isTurnConfigured();
       const forceRelay = turnAvailable && state.webrtc && state.webrtc.forceRelay;
-      const qualityProfile = state.webrtc && state.webrtc.qualityProfile || 'standard';
+      const qualityProfile = state.webrtc && state.webrtc.qualityProfile || 'auto';
       const relayTitle = !turnAvailable
         ? '服务端未配置 TURN，无法强制中继'
         : isInCall

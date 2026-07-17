@@ -15,27 +15,28 @@
     var cameraFacingMode = 'user';
     var cameraSwitchInProgress = false;
     var connectionStatusPending = false;
+    var remoteSystemAudioMids = Object.create(null);
     var SCREEN_SHARE_UNSUPPORTED_MESSAGE = '当前浏览器/系统未作兼容，或当前浏览器/系统不支持此功能。';
     var QUALITY_PROFILES = {
       auto: {
-        label: '自动', audioBitrate: null,
+        label: '自动', micAudioBitrate: null, systemAudioBitrate: null,
         camera: { width: 1280, height: 720, frameRate: 30, maxBitrate: null },
         screen: { width: 1920, height: 1080, frameRate: 30, maxBitrate: null }
       },
       low: {
-        label: '省流', audioBitrate: 32000,
-        camera: { width: 854, height: 480, frameRate: 15, maxBitrate: 800000 },
-        screen: { width: 1280, height: 720, frameRate: 15, maxBitrate: 1500000 }
+        label: '省流', micAudioBitrate: 24000, systemAudioBitrate: 64000,
+        camera: { width: 854, height: 480, frameRate: 15, maxBitrate: 500000 },
+        screen: { width: 1280, height: 720, frameRate: 15, maxBitrate: 700000 }
       },
       standard: {
-        label: '标准', audioBitrate: 48000,
-        camera: { width: 1280, height: 720, frameRate: 30, maxBitrate: 2500000 },
-        screen: { width: 1920, height: 1080, frameRate: 15, maxBitrate: 3500000 }
+        label: '标准', micAudioBitrate: 48000, systemAudioBitrate: 128000,
+        camera: { width: 1280, height: 720, frameRate: 30, maxBitrate: 2000000 },
+        screen: { width: 1920, height: 1080, frameRate: 30, maxBitrate: 3000000 }
       },
       high: {
-        label: '高清', audioBitrate: 96000,
-        camera: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 10000000 },
-        screen: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 12000000 }
+        label: '高清', micAudioBitrate: 96000, systemAudioBitrate: 192000,
+        camera: { width: 1920, height: 1080, frameRate: 30, maxBitrate: 6000000 },
+        screen: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 10000000 }
       }
     };
 
@@ -87,7 +88,7 @@
     }
 
     function getActiveQualityProfile() {
-      return QUALITY_PROFILES[wrtc.activeQualityProfile] || QUALITY_PROFILES.standard;
+      return QUALITY_PROFILES[wrtc.activeQualityProfile] || QUALITY_PROFILES.auto;
     }
 
     if (wrtc.forceRelay && !isTurnConfigured()) {
@@ -95,8 +96,8 @@
       localStorage.setItem('forceRelay', 'false');
     }
     if (!QUALITY_PROFILES[wrtc.qualityProfile]) {
-      wrtc.qualityProfile = 'standard';
-      localStorage.setItem('callQualityProfile', 'standard');
+      wrtc.qualityProfile = 'auto';
+      localStorage.setItem('callQualityProfile', 'auto');
     }
 
     function createPeerConnection(iceTransportPolicy) {
@@ -276,6 +277,36 @@
       return constraints;
     }
 
+    function createSystemAudioConstraints() {
+      var supported = getSupportedMediaConstraints();
+      var constraints = {};
+      function add(name, value) {
+        if (!supported || supported[name]) constraints[name] = value;
+      }
+      add('echoCancellation', false);
+      add('noiseSuppression', false);
+      add('autoGainControl', false);
+      add('channelCount', { ideal: 2 });
+      add('sampleRate', { ideal: 48000 });
+      add('sampleSize', { ideal: 16 });
+      return constraints;
+    }
+
+    function isSystemAudioTrack(track) {
+      return Boolean(track && track.kind === 'audio' && wrtc.systemAudioTrack === track);
+    }
+
+    function configureSystemAudioTrack(stream) {
+      var track = stream && stream.getAudioTracks ? stream.getAudioTracks()[0] : null;
+      wrtc.systemAudioTrack = track || null;
+      if (!track) return Promise.resolve(stream);
+      setTrackContentHint(track, false);
+      if (typeof track.applyConstraints !== 'function') return Promise.resolve(stream);
+      return track.applyConstraints(createSystemAudioConstraints()).catch(function (err) {
+        console.warn('[系统音频] 浏览器未完整应用双声道采集约束:', err);
+      }).then(function () { return stream; });
+    }
+
     function createVideoConstraints(kind, facingMode) {
       var config = getActiveQualityProfile()[kind];
       var constraints = {
@@ -398,7 +429,7 @@
         if (typeof track.getSettings !== 'function') return;
         var settings = track.getSettings();
         if (track.kind === 'audio') {
-          var audioLabel = (callType === 'screen' && track !== wrtc.micAudioTrack) ? '系统音频' : '麦克风处理';
+          var audioLabel = isSystemAudioTrack(track) ? '系统音频' : '麦克风处理';
           console.log('[' + audioLabel + '] sampleRate=' + (settings.sampleRate || '?') +
             ' | channels=' + (settings.channelCount || '?') +
             ' | echoCancellation=' + String(settings.echoCancellation) +
@@ -417,9 +448,7 @@
         if (track.kind === 'video') {
           track.contentHint = isScreenVideo ? 'detail' : 'motion';
         } else if (track.kind === 'audio') {
-          var isSystemAudio = (wrtc.callType === 'screen' || wrtc.isScreenSharing) &&
-            track !== wrtc.micAudioTrack;
-          track.contentHint = isSystemAudio ? 'music' : 'speech';
+          track.contentHint = isSystemAudioTrack(track) ? 'music' : 'speech';
         }
       } catch (err) {}
     }
@@ -436,7 +465,7 @@
       if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
       var encoding = parameters.encodings[0];
       var maxBitrate = track.kind === 'audio'
-        ? profile.audioBitrate
+        ? (isSystemAudioTrack(track) ? profile.systemAudioBitrate : profile.micAudioBitrate)
         : (isScreenVideo ? profile.screen.maxBitrate : profile.camera.maxBitrate);
 
       if (maxBitrate) encoding.maxBitrate = maxBitrate;
@@ -452,7 +481,8 @@
       }
 
       return sender.setParameters(parameters).then(function () {
-        console.log('[发送质量] ' + track.kind +
+        var trackLabel = track.kind === 'audio' && isSystemAudioTrack(track) ? 'audio/system' : track.kind;
+        console.log('[发送质量] ' + trackLabel +
           (track.kind === 'video' ? (isScreenVideo ? '/screen' : '/camera') : '') +
           ' | maxBitrate=' + (maxBitrate ? Math.round(maxBitrate / 1000) + 'kbps' : 'auto'));
         return true;
@@ -469,6 +499,85 @@
         var isScreenVideo = sender.track.kind === 'video' &&
           (wrtc.callType === 'screen' || wrtc.isScreenSharing);
         applySenderQuality(sender, sender.track, isScreenVideo);
+      });
+    }
+
+    function getSdpMid(section) {
+      var match = String(section || '').match(/^a=mid:([^\r\n]+)/mi);
+      return match ? match[1].trim() : '';
+    }
+
+    function sectionContainsTrack(section, track) {
+      if (!track || !track.id) return false;
+      return String(section || '').split(/\r?\n/).some(function (line) {
+        if (line.indexOf('a=msid:') !== 0 && line.indexOf(' msid:') < 0) return false;
+        var tokens = line.trim().split(/\s+/);
+        return tokens[tokens.length - 1] === track.id;
+      });
+    }
+
+    function configureOpusStereo(section, enabled, addMarker) {
+      var lineEnding = section.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+      var markerPattern = /^a=x-lchat-system-audio:1\r?\n?/gmi;
+      var output = section.replace(markerPattern, '');
+      var payloadTypes = [];
+      output.replace(/^a=rtpmap:(\d+)\s+opus\/48000\/2\s*$/gmi, function (_, payloadType) {
+        payloadTypes.push(payloadType);
+        return _;
+      });
+
+      payloadTypes.forEach(function (payloadType) {
+        var fmtpPattern = new RegExp('^a=fmtp:' + payloadType + '\\s+([^\\r\\n]*)', 'mi');
+        var fmtpMatch = output.match(fmtpPattern);
+        if (fmtpMatch) {
+          var parameters = fmtpMatch[1].split(';').map(function (value) { return value.trim(); }).filter(function (value) {
+            return value && !/^stereo=/i.test(value) && !/^sprop-stereo=/i.test(value);
+          });
+          if (enabled) parameters.push('stereo=1', 'sprop-stereo=1');
+          output = parameters.length > 0
+            ? output.replace(fmtpPattern, 'a=fmtp:' + payloadType + ' ' + parameters.join(';'))
+            : output.replace(new RegExp('^a=fmtp:' + payloadType + '\\s+[^\\r\\n]*\\r?\\n?', 'mi'), '');
+        } else if (enabled) {
+          var rtpmapPattern = new RegExp('(^a=rtpmap:' + payloadType + '\\s+opus\/48000\/2\\s*$)', 'mi');
+          output = output.replace(rtpmapPattern, '$1' + lineEnding +
+            'a=fmtp:' + payloadType + ' stereo=1;sprop-stereo=1');
+        }
+      });
+
+      if (enabled && addMarker) {
+        var midPattern = /^a=mid:[^\r\n]+$/mi;
+        if (midPattern.test(output)) {
+          output = output.replace(midPattern, function (line) {
+            return line + lineEnding + 'a=x-lchat-system-audio:1';
+          });
+        } else {
+          output += (output.endsWith(lineEnding) ? '' : lineEnding) + 'a=x-lchat-system-audio:1' + lineEnding;
+        }
+      }
+      return output;
+    }
+
+    function prepareLocalDescription(description) {
+      if (!description || !description.sdp) return description;
+      var lineEnding = description.sdp.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+      var sections = description.sdp.split(/\r?\n(?=m=)/);
+      sections = sections.map(function (section) {
+        if (section.indexOf('m=audio') !== 0) return section;
+        var mid = getSdpMid(section);
+        var localSystemAudio = sectionContainsTrack(section, wrtc.systemAudioTrack);
+        var remoteSystemAudio = description.type === 'answer' && Boolean(remoteSystemAudioMids[mid]);
+        return configureOpusStereo(section, localSystemAudio || remoteSystemAudio, localSystemAudio || remoteSystemAudio);
+      });
+      return { type: description.type, sdp: sections.join(lineEnding) };
+    }
+
+    function rememberRemoteSystemAudioMids(description) {
+      remoteSystemAudioMids = Object.create(null);
+      if (!description || !description.sdp) return;
+      description.sdp.split(/\r?\n(?=m=)/).forEach(function (section) {
+        if (section.indexOf('m=audio') !== 0 || !/^a=x-lchat-system-audio:1$/mi.test(section)) return;
+        var mid = getSdpMid(section);
+        if (mid) remoteSystemAudioMids[mid] = true;
       });
     }
 
@@ -490,8 +599,8 @@
       if (callType === 'screen') {
         return requestDisplayMedia({
           video: createVideoConstraints('screen'),
-          audio: true
-        }).then(function(screenStream) {
+          audio: createSystemAudioConstraints()
+        }).then(configureSystemAudioTrack).then(function(screenStream) {
           return navigator.mediaDevices.getUserMedia({
             audio: createAudioConstraints(),
             video: false
@@ -510,7 +619,13 @@
     }
 
     function addLocalTracksToPC(pc, stream, callType) {
-      stream.getTracks().forEach(function (track) {
+      var tracks = stream.getTracks();
+      if (callType === 'screen' && wrtc.micAudioTrack) {
+        tracks = [wrtc.micAudioTrack]
+          .concat(stream.getVideoTracks())
+          .concat(stream.getAudioTracks().filter(function (track) { return track !== wrtc.micAudioTrack; }));
+      }
+      tracks.forEach(function (track) {
         var sender = pc.addTrack(track, stream);
         applySenderQuality(sender, track, callType === 'screen' && track.kind === 'video');
       });
@@ -534,10 +649,12 @@
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
       wrtc.isScreenSharing = (callType === 'screen');
+      wrtc.systemAudioTrack = null;
       cameraFacingMode = 'user';
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
       remoteRelayProtocols = Object.create(null);
+      remoteSystemAudioMids = Object.create(null);
       hasConnectedOnce = false;
 
       if (handlers.onCallStateChange) {
@@ -568,7 +685,7 @@
         bufferLocalCandidates = true;
         bufferedLocalCandidates = [];
         wrtc.pc.createOffer().then(function (offer) {
-          return wrtc.pc.setLocalDescription(offer);
+          return wrtc.pc.setLocalDescription(prepareLocalDescription(offer));
         }).then(function () {
           if (!wsModule.sendCallRequest(wrtc.callPeerId, callType)) {
             throw new Error('信令连接尚未建立');
@@ -592,6 +709,8 @@
       wrtc.activeIceTransportPolicy = 'all';
       wrtc.pendingCandidates = [];
       remoteRelayProtocols = Object.create(null);
+      remoteSystemAudioMids = Object.create(null);
+      wrtc.systemAudioTrack = null;
       hasConnectedOnce = false;
       // Buffer ICE candidates that arrive before the PC is created.
       // Without this, the caller's early srflx/host candidates are discarded,
@@ -712,6 +831,7 @@
         : Promise.resolve();
 
       prepare.then(function () {
+        rememberRemoteSystemAudioMids(sdp);
         return pc.setRemoteDescription(new RTCSessionDescription(sdp));
       }).then(function () {
         settingRemoteDescription = false;
@@ -719,7 +839,7 @@
         flushPendingCandidates();
         return pc.createAnswer();
       }).then(function (answer) {
-        return pc.setLocalDescription(answer);
+        return pc.setLocalDescription(prepareLocalDescription(answer));
       }).then(function () {
         if (!wsModule.sendCallAnswer(from, pc.localDescription)) {
           throw new Error('信令连接尚未恢复');
@@ -850,8 +970,8 @@
 
       requestDisplayMedia({
         video: createVideoConstraints('screen'),
-        audio: true
-      }).then(function (screenStream) {
+        audio: createSystemAudioConstraints()
+      }).then(configureSystemAudioTrack).then(function (screenStream) {
         wrtc.screenStream = screenStream;
         wrtc.isScreenSharing = true;
 
@@ -905,6 +1025,7 @@
 
       wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
       wrtc.screenStream = null;
+      wrtc.systemAudioTrack = null;
       wrtc.isScreenSharing = false;
 
       if (wrtc.callType === 'video') {
@@ -928,6 +1049,7 @@
         wrtc.screenStream.getTracks().forEach(function (t) { t.stop(); });
         wrtc.screenStream = null;
       }
+      wrtc.systemAudioTrack = null;
 
       // Screen stream from startCall('screen') — stored in localStream
       // The video track is already ended by the browser; remove it from PC
@@ -973,7 +1095,7 @@
       bufferLocalCandidates = true;
       bufferedLocalCandidates = [];
       return pc.createOffer(iceRestart ? { iceRestart: true } : undefined).then(function (offer) {
-        return pc.setLocalDescription(offer);
+        return pc.setLocalDescription(prepareLocalDescription(offer));
       }).then(function () {
         applyQualityToAllSenders();
         var sent = wsModule.sendCallOffer(wrtc.callPeerId, pc.localDescription);
@@ -1531,6 +1653,7 @@
       discardBufferedLocalCandidates();
       stopConnectionStats();
       wrtc.micAudioTrack = null;
+      wrtc.systemAudioTrack = null;
       if (wrtc.localStream) {
         wrtc.localStream.getTracks().forEach(function (t) { t.stop(); });
         wrtc.localStream = null;
@@ -1562,8 +1685,10 @@
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
       wrtc.micAudioTrack = null;
+      wrtc.systemAudioTrack = null;
       cameraFacingMode = 'user';
       remoteRelayProtocols = Object.create(null);
+      remoteSystemAudioMids = Object.create(null);
       hasConnectedOnce = false;
     }
 
