@@ -1932,7 +1932,9 @@ button:hover {
 
 .call-window-minimized.call-type-video,
 .call-window-minimized.call-type-screen {
-  aspect-ratio: 16 / 9;
+  width: var(--call-mini-width, min(360px, calc(100vw - 24px)));
+  height: var(--call-mini-height, auto);
+  aspect-ratio: var(--call-mini-aspect-ratio, 16 / 9);
 }
 
 .call-window-minimized.call-type-video .call-overlay-top,
@@ -1978,7 +1980,7 @@ button:hover {
   bottom: 8px;
 }
 
-/* ===== In-page Video Focus Mode ===== */
+/* ===== Browser Fullscreen Video Mode ===== */
 .call-window-focus {
   inset: 0;
   width: 100vw;

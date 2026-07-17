@@ -8,6 +8,8 @@
     var currentWindowMode = 'normal';
     var hasRemoteVideo = false;
     var hasLocalVideo = false;
+    var videoAspectListenersBound = false;
+    var fullscreenListenersBound = false;
 
     function getOverlay() {
       return document.getElementById('callOverlay');
@@ -29,6 +31,116 @@
         'call-screen-local-source',
         currentCallType === 'screen' && hasLocalVideo && !hasRemoteVideo
       );
+      updateMinimizedVideoSize();
+    }
+
+    function getMainVideoElement() {
+      if (currentCallType === 'screen' && hasLocalVideo && !hasRemoteVideo) {
+        return document.getElementById('localVideo');
+      }
+      return document.getElementById('remoteVideo');
+    }
+
+    function updateMinimizedVideoSize() {
+      var overlay = getOverlay();
+      if (!overlay || !overlay.style || (currentCallType !== 'video' && currentCallType !== 'screen')) return;
+
+      var video = getMainVideoElement();
+      var sourceWidth = video && Number(video.videoWidth);
+      var sourceHeight = video && Number(video.videoHeight);
+      var hasVideoSize = sourceWidth > 0 && sourceHeight > 0;
+      var ratio = hasVideoSize ? sourceWidth / sourceHeight : 16 / 9;
+      ratio = Math.max(0.25, Math.min(4, ratio));
+
+      var viewportWidth = Number(global.innerWidth) || 360;
+      var viewportHeight = Number(global.innerHeight) || 640;
+      var maxWidth = Math.min(360, Math.max(160, viewportWidth - 24));
+      var maxHeight = Math.min(480, Math.max(120, viewportHeight - 24), Math.max(120, viewportHeight * 0.7));
+      var width = maxWidth;
+      var height = width / ratio;
+
+      if (height > maxHeight) {
+        height = maxHeight;
+        width = height * ratio;
+      }
+
+      overlay.style.setProperty('--call-mini-width', Math.round(width) + 'px');
+      overlay.style.setProperty('--call-mini-height', Math.round(height) + 'px');
+      overlay.style.setProperty('--call-mini-aspect-ratio', hasVideoSize ? sourceWidth + ' / ' + sourceHeight : '16 / 9');
+    }
+
+    function bindVideoAspectListeners() {
+      if (videoAspectListenersBound) return;
+      videoAspectListenersBound = true;
+      ['remoteVideo', 'localVideo'].forEach(function (id) {
+        var video = document.getElementById(id);
+        if (!video || typeof video.addEventListener !== 'function') return;
+        video.addEventListener('loadedmetadata', updateMinimizedVideoSize);
+        video.addEventListener('resize', updateMinimizedVideoSize);
+      });
+      if (typeof global.addEventListener === 'function') {
+        global.addEventListener('resize', updateMinimizedVideoSize);
+      }
+    }
+
+    function getFullscreenElement() {
+      return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function isFullscreenSupported(overlay) {
+      if (!overlay) return false;
+      if (typeof overlay.requestFullscreen === 'function') return document.fullscreenEnabled !== false;
+      return typeof overlay.webkitRequestFullscreen === 'function';
+    }
+
+    function requestOverlayFullscreen(overlay) {
+      try {
+        var result;
+        if (typeof overlay.requestFullscreen === 'function') {
+          result = overlay.requestFullscreen();
+        } else if (typeof overlay.webkitRequestFullscreen === 'function') {
+          result = overlay.webkitRequestFullscreen();
+        } else {
+          return Promise.resolve(false);
+        }
+        return result && typeof result.then === 'function' ? result.then(function () { return true; }) : Promise.resolve(true);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    }
+
+    function exitBrowserFullscreen() {
+      if (!getFullscreenElement()) return Promise.resolve(true);
+      try {
+        var result;
+        if (typeof document.exitFullscreen === 'function') {
+          result = document.exitFullscreen();
+        } else if (typeof document.webkitExitFullscreen === 'function') {
+          result = document.webkitExitFullscreen();
+        } else {
+          return Promise.resolve(false);
+        }
+        return result && typeof result.then === 'function' ? result.then(function () { return true; }) : Promise.resolve(true);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    }
+
+    function handleFullscreenChange() {
+      var overlay = getOverlay();
+      if (!overlay || !currentCallType) return;
+      if (getFullscreenElement() === overlay) {
+        if (currentWindowMode !== 'focus') setWindowMode('focus');
+      } else if (currentWindowMode === 'focus') {
+        setWindowMode('normal');
+      }
+    }
+
+    function bindFullscreenListeners() {
+      if (fullscreenListenersBound || typeof document.addEventListener !== 'function') return;
+      fullscreenListenersBound = true;
+      document.addEventListener('fullscreenchange', handleFullscreenChange);
+      document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     }
 
     function setWindowMode(mode) {
@@ -43,15 +155,37 @@
     }
 
     function minimizeCallWindow() {
+      if (getFullscreenElement()) {
+        return exitBrowserFullscreen().catch(function () { return false; }).then(function () {
+          return setWindowMode('minimized');
+        });
+      }
       return setWindowMode('minimized');
     }
 
     function restoreCallWindow() {
+      if (getFullscreenElement()) {
+        return exitBrowserFullscreen().catch(function (err) {
+          console.warn('[通话全屏] 退出失败:', err);
+          return false;
+        }).then(function () {
+          return setWindowMode('normal');
+        });
+      }
       return setWindowMode('normal');
     }
 
     function focusCallVideo() {
-      return setWindowMode('focus');
+      var overlay = getOverlay();
+      if (!overlay || currentCallType === 'audio' || !isFullscreenSupported(overlay)) {
+        return Promise.resolve(false);
+      }
+      setWindowMode('focus');
+      return requestOverlayFullscreen(overlay).catch(function (err) {
+        console.warn('[通话全屏] 浏览器拒绝进入全屏:', err);
+        setWindowMode('normal');
+        return false;
+      });
     }
 
     function showOverlay(callType, peerLabel) {
@@ -60,6 +194,8 @@
 
       overlay.style.display = 'flex';
       currentCallType = callType;
+      bindVideoAspectListeners();
+      bindFullscreenListeners();
       updatePeerLabel(peerLabel);
       setWindowMode('normal');
 
@@ -78,6 +214,7 @@
       var videoBtn = document.getElementById('callVideoBtn');
       var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
       var audioOutputBtn = document.getElementById('callAudioOutputBtn');
+      var focusBtn = document.getElementById('callFocusBtn');
       var videoContainer = document.getElementById('callVideoContainer');
 
       if (remoteVideo) remoteVideo.style.display = isVideo ? 'block' : 'none';
@@ -96,6 +233,8 @@
       }
       if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
       if (audioOutputBtn) audioOutputBtn.style.display = 'flex';
+      if (focusBtn) focusBtn.style.display = isVideo && isFullscreenSupported(overlay) ? 'flex' : 'none';
+      updateMinimizedVideoSize();
 
       // 每次打开通话界面时重置控制按钮状态，避免上次通话的残留 UI 状态
       if (muteBtn) {
@@ -120,9 +259,17 @@
     function hideOverlay() {
       hideAudioOutputMenu();
       var overlay = getOverlay();
+      if (overlay && getFullscreenElement() === overlay) {
+        exitBrowserFullscreen().catch(function () {});
+      }
       if (overlay) {
         overlay.style.display = 'none';
         overlay.className = 'call-overlay';
+        if (overlay.style && typeof overlay.style.removeProperty === 'function') {
+          overlay.style.removeProperty('--call-mini-width');
+          overlay.style.removeProperty('--call-mini-height');
+          overlay.style.removeProperty('--call-mini-aspect-ratio');
+        }
       }
       stopDurationTimer();
       currentCallType = null;
