@@ -36,7 +36,8 @@
       ended: false,
       pendingCandidates: [],
       remoteDescriptionSet: false,
-      pendingAcquireReject: null
+      pendingAcquireReject: null,
+      disconnectTimer: null
     };
 
     function notifyWarning(message) {
@@ -46,6 +47,7 @@
     function emitEnded(reason) {
       if (source.closed || source.ended) return;
       source.ended = true;
+      console.warn('[Android 屏幕源] 连接结束:', reason || 'source_ended');
       if (!source.acquired && source.pendingAcquireReject) {
         source.pendingAcquireReject(new AndroidScreenSourceError(
           'SIGNALING',
@@ -226,6 +228,10 @@
     }
 
     function closeResources(sendClose) {
+      if (source.disconnectTimer) {
+        clearTimeout(source.disconnectTimer);
+        source.disconnectTimer = null;
+      }
       if (sendClose) sendJson({ type: 'close' });
       if (source.socket) {
         source.socket.onclose = null;
@@ -262,6 +268,17 @@
       source.acquired = false;
     }
 
+    function scheduleDisconnectCheck() {
+      if (source.disconnectTimer || source.closed || source.ended) return;
+      source.disconnectTimer = setTimeout(function () {
+        source.disconnectTimer = null;
+        if (!source.closed && !source.ended && source.pc &&
+            source.pc.connectionState === 'disconnected') {
+          emitEnded('connection_disconnected');
+        }
+      }, 3000);
+    }
+
     async function acquire() {
       if (source.acquired && source.stream) return source.stream;
       const status = await getStatus();
@@ -289,7 +306,18 @@
       };
       source.pc.onconnectionstatechange = function () {
         const state = source.pc.connectionState;
-        if (state === 'failed' || state === 'disconnected' || state === 'closed') emitEnded('connection_' + state);
+        if (state === 'connected') {
+          if (source.disconnectTimer) {
+            clearTimeout(source.disconnectTimer);
+            source.disconnectTimer = null;
+          }
+          return;
+        }
+        if (state === 'disconnected') {
+          scheduleDisconnectCheck();
+          return;
+        }
+        if (state === 'failed' || state === 'closed') emitEnded('connection_' + state);
       };
 
       let resolveAcquire;
