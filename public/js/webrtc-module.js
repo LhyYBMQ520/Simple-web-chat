@@ -16,6 +16,7 @@
     var cameraSwitchInProgress = false;
     var connectionStatusPending = false;
     var remoteSystemAudioMids = Object.create(null);
+    var screenEndHandling = false;
     var SCREEN_SHARE_UNSUPPORTED_MESSAGE = '当前浏览器/系统未作兼容，或当前浏览器/系统不支持此功能。';
     var QUALITY_PROFILES = {
       auto: {
@@ -136,6 +137,14 @@
       };
 
       pc.ontrack = function (event) {
+        if (event.track && event.track.kind === 'video') {
+          event.track.onended = function () {
+            if (wrtc.callState === 'connected' && wrtc.callType === 'screen' &&
+                handlers.onRemoteScreenShareEnded) {
+              handlers.onRemoteScreenShareEnded();
+            }
+          };
+        }
         if (event.streams && event.streams[0]) {
           if (!wrtc.remoteStream || wrtc.remoteStream !== event.streams[0]) {
             wrtc.remoteStream = event.streams[0];
@@ -229,7 +238,97 @@
       }
     }
 
+    function getNativeScreenSourceFactory() {
+      return global.ChatAndroidScreenSource || null;
+    }
+
+    function createNativeScreenSource() {
+      var factory = getNativeScreenSourceFactory();
+      if (!factory || typeof factory.create !== 'function' ||
+          typeof factory.isAndroidDevice !== 'function' || !factory.isAndroidDevice()) {
+        return null;
+      }
+
+      var source = factory.create({
+        baseUrl: 'http://127.0.0.1:18765',
+        wsUrl: 'ws://127.0.0.1:18765/webrtc',
+        workletUrl: 'js/android-pcm-worklet.js'
+      });
+      wrtc.androidScreenSource = source;
+      source.onended = function (reason) {
+        // During acquire(), the promise rejection below owns error cleanup.
+        // Handling the event here as well would show duplicate dialogs.
+        if (!source.acquired) return;
+        if (wrtc.callState === 'connected' && wrtc.callType === 'screen') {
+          handleScreenShareEnded(reason || 'android_source_ended');
+        } else if (wrtc.callState !== 'idle') {
+          var sourceError = new Error('Android 屏幕源已停止');
+          sourceError.name = 'AndroidScreenSourceEndedError';
+          sourceError.reason = reason;
+          handleMediaError(sourceError);
+        }
+      };
+      source.onwarning = function (message) {
+        if (handlers.onCallNotice) handlers.onCallNotice(message);
+      };
+      return source;
+    }
+
+    function getScreenSourceStream() {
+      var nativeFactory = getNativeScreenSourceFactory();
+      var nativeSource = createNativeScreenSource();
+
+      if (nativeSource) {
+        return nativeSource.acquire().then(function (stream) {
+          wrtc.screenSource = 'android-native';
+          wrtc.screenShareActive = true;
+          return stream;
+        }).catch(function (err) {
+          nativeSource.close();
+          wrtc.androidScreenSource = null;
+
+          // A missing/unstarted companion app is recoverable. Protocol or
+          // negotiation failures should remain visible instead of silently
+          // switching to a different capture source.
+          if (!nativeFactory || typeof nativeFactory.isRecoverableError !== 'function' ||
+              !nativeFactory.isRecoverableError(err)) {
+            throw err;
+          }
+
+          return requestDisplayMedia({
+            video: createVideoConstraints('screen'),
+            audio: createSystemAudioConstraints()
+          }).then(configureSystemAudioTrack).then(function (screenStream) {
+            wrtc.screenSource = 'browser';
+            wrtc.screenShareActive = true;
+            return screenStream;
+          }).catch(function (browserError) {
+            browserError.androidSourceError = err;
+            throw browserError;
+          });
+        });
+      }
+
+      return requestDisplayMedia({
+        video: createVideoConstraints('screen'),
+        audio: createSystemAudioConstraints()
+      }).then(configureSystemAudioTrack).then(function (screenStream) {
+        wrtc.screenSource = 'browser';
+        wrtc.screenShareActive = true;
+        return screenStream;
+      });
+    }
+
     function getScreenShareErrorMessage(err) {
+      if (err && err.androidSourceError && err.androidSourceError.code === 'NOT_READY') {
+        return '请先打开 Screensharing App，点击“授权并开始”并完成系统屏幕共享授权';
+      }
+      if (err && err.name === 'AndroidScreenSourceEndedError') {
+        return 'Android 屏幕共享已停止';
+      }
+      if (err && err.name === 'AndroidScreenSourceError' && err.code === 'SIGNALING') {
+        return 'Android 屏幕源连接失败，请重启 Screensharing App 后重试';
+      }
       if (err && (
         err.name === 'NotSupportedError' ||
         err.name === 'SecurityError' ||
@@ -596,10 +695,14 @@
       }
 
       if (callType === 'screen') {
-        return requestDisplayMedia({
-          video: createVideoConstraints('screen'),
-          audio: createSystemAudioConstraints()
-        }).then(configureSystemAudioTrack).then(function(screenStream) {
+        return getScreenSourceStream().then(function(screenStream) {
+          if (wrtc.screenSource === 'android-native') {
+            // The Android source exposes system audio through the generated
+            // MediaStream track. Browser getDisplayMedia configures its own
+            // system track in getScreenSourceStream().
+            wrtc.systemAudioTrack = screenStream.getAudioTracks()[0] || null;
+            if (wrtc.systemAudioTrack) setTrackContentHint(wrtc.systemAudioTrack, false);
+          }
           return navigator.mediaDevices.getUserMedia({
             audio: createAudioConstraints(),
             video: false
@@ -648,6 +751,10 @@
       wrtc.isMuted = false;
       wrtc.isVideoOff = false;
       wrtc.systemAudioTrack = null;
+      wrtc.androidScreenSource = null;
+      wrtc.screenSource = null;
+      wrtc.screenShareActive = false;
+      screenEndHandling = false;
       cameraFacingMode = 'user';
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
@@ -955,21 +1062,48 @@
       }
     }
 
-    function handleScreenShareEnded() {
-      wrtc.systemAudioTrack = null;
+    function handleScreenShareEnded(reason) {
+      if (screenEndHandling || wrtc.callType !== 'screen' || wrtc.callState === 'idle') return;
+      screenEndHandling = true;
 
-      // Screen stream from startCall('screen') — stored in localStream
-      // The video track is already ended by the browser; remove it from PC
-      if (wrtc.localStream && wrtc.callType === 'screen') {
-        wrtc.localStream.getVideoTracks().forEach(function (t) {
-          // Track already ended by browser, just ensure it's stopped
-          if (t.readyState !== 'ended') { t.stop(); }
-        });
-        // Keep audio track alive for continued voice chat
+      var localStream = wrtc.localStream;
+      var removedTracks = [];
+      if (localStream) {
+        localStream.getVideoTracks().forEach(function (track) { removedTracks.push(track); });
+        if (wrtc.systemAudioTrack) removedTracks.push(wrtc.systemAudioTrack);
       }
 
-      if (handlers.onCallError) {
-        handlers.onCallError('屏幕共享已停止，已切换为纯语音通话');
+      // Remove ended source tracks from the remote-call PeerConnection before
+      // renegotiating. The microphone track remains in the same MediaStream.
+      if (wrtc.pc && typeof wrtc.pc.getSenders === 'function') {
+        wrtc.pc.getSenders().forEach(function (sender) {
+          if (sender.track && removedTracks.indexOf(sender.track) >= 0) {
+            try { wrtc.pc.removeTrack(sender); } catch (err) {
+              sender.replaceTrack(null).catch(function () {});
+            }
+          }
+        });
+      }
+
+      removedTracks.forEach(function (track) {
+        if (localStream && typeof localStream.removeTrack === 'function') localStream.removeTrack(track);
+        if (track.readyState !== 'ended') track.stop();
+      });
+
+      if (wrtc.androidScreenSource) {
+        wrtc.androidScreenSource.close();
+        wrtc.androidScreenSource = null;
+      }
+      wrtc.systemAudioTrack = null;
+      wrtc.screenSource = null;
+      wrtc.screenShareActive = false;
+      wrtc.isVideoOff = true;
+
+      if (handlers.onLocalStream && localStream) handlers.onLocalStream(localStream);
+      if (handlers.onScreenShareEnded) {
+        handlers.onScreenShareEnded(reason || 'screen_ended');
+      } else if (handlers.onCallStatusChange) {
+        handlers.onCallStatusChange('屏幕共享已停止，语音通话中');
       }
 
       renegotiate();
@@ -1508,6 +1642,7 @@
 
     function handleMediaError(err) {
       console.error('媒体采集失败:', err);
+      err = err || {};
 
       var message = '媒体设备访问失败';
       if (wrtc.callType === 'screen') {
@@ -1546,8 +1681,14 @@
       settingRemoteDescription = false;
       discardBufferedLocalCandidates();
       stopConnectionStats();
+      if (wrtc.androidScreenSource) {
+        wrtc.androidScreenSource.close();
+        wrtc.androidScreenSource = null;
+      }
       wrtc.micAudioTrack = null;
       wrtc.systemAudioTrack = null;
+      wrtc.screenSource = null;
+      wrtc.screenShareActive = false;
       if (wrtc.localStream) {
         wrtc.localStream.getTracks().forEach(function (t) { t.stop(); });
         wrtc.localStream = null;
@@ -1575,6 +1716,10 @@
       wrtc.prePcCandidates = [];
       wrtc.micAudioTrack = null;
       wrtc.systemAudioTrack = null;
+      wrtc.androidScreenSource = null;
+      wrtc.screenSource = null;
+      wrtc.screenShareActive = false;
+      screenEndHandling = false;
       cameraFacingMode = 'user';
       remoteRelayProtocols = Object.create(null);
       remoteSystemAudioMids = Object.create(null);
@@ -1594,7 +1739,9 @@
         autoGainControl: wrtc.autoGainControl,
         activeIceTransportPolicy: wrtc.activeIceTransportPolicy,
         isMuted: wrtc.isMuted,
-        isVideoOff: wrtc.isVideoOff
+        isVideoOff: wrtc.isVideoOff,
+        screenSource: wrtc.screenSource,
+        screenShareActive: wrtc.screenShareActive
       };
     }
 

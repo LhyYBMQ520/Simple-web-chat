@@ -365,6 +365,25 @@
       updateScreenVideoRole();
     }
 
+    function showScreenShareEnded() {
+      var overlay = getOverlay();
+      if (!overlay) return;
+      currentCallType = 'audio';
+      overlay.className = overlay.className.replace(/\bcall-type-(audio|video|screen)\b/g, 'call-type-audio');
+      var remoteVideo = document.getElementById('remoteVideo');
+      var localVideo = document.getElementById('localVideo');
+      var videoBtn = document.getElementById('callVideoBtn');
+      var cameraSwitchBtn = document.getElementById('callCameraSwitchBtn');
+      var videoContainer = document.getElementById('callVideoContainer');
+      if (remoteVideo) remoteVideo.style.display = 'none';
+      if (localVideo) localVideo.style.display = 'none';
+      if (videoBtn) videoBtn.style.display = 'none';
+      if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
+      if (videoContainer) videoContainer.style.display = 'none';
+      updateStatusText('语音通话中');
+      updateFullscreenButtonState();
+    }
+
     function updateMuteButton(isMuted) {
       var btn = document.getElementById('callMuteBtn');
       if (!btn) return;
@@ -694,6 +713,7 @@
       updateStatusText: updateStatusText,
       setRemoteVideo: setRemoteVideo,
       setLocalVideo: setLocalVideo,
+      showScreenShareEnded: showScreenShareEnded,
       updateMuteButton: updateMuteButton,
       updateVideoButton: updateVideoButton,
       updateCameraSwitchAvailability: updateCameraSwitchAvailability,

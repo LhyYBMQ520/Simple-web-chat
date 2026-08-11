@@ -402,6 +402,25 @@
     if (sessionModule) sessionModule.updateChatHeader();
   }
 
+  function onCallNotice(message) {
+    if (webrtcUIModule) webrtcUIModule.showError(message);
+  }
+
+  function onScreenShareEnded() {
+    if (webrtcUIModule) {
+      if (webrtcUIModule.showScreenShareEnded) webrtcUIModule.showScreenShareEnded();
+      webrtcUIModule.showError('屏幕共享已停止，已切换为纯语音通话');
+    }
+    if (sessionModule) sessionModule.updateChatHeader();
+  }
+
+  function onRemoteScreenShareEnded() {
+    if (webrtcUIModule) {
+      if (webrtcUIModule.showScreenShareEnded) webrtcUIModule.showScreenShareEnded();
+      webrtcUIModule.showError('对方已停止屏幕共享，语音通话仍在继续');
+    }
+  }
+
   function onMuteChange(isMuted) {
     if (webrtcUIModule) webrtcUIModule.updateMuteButton(isMuted);
   }
@@ -554,6 +573,9 @@
       onRemoteStream: onRemoteStream,
       onLocalStream: onLocalStream,
       onCallError: onCallError,
+      onCallNotice: onCallNotice,
+      onScreenShareEnded: onScreenShareEnded,
+      onRemoteScreenShareEnded: onRemoteScreenShareEnded,
       onMuteChange: onMuteChange,
       onVideoToggle: onVideoToggle,
       onCameraSwitchAvailability: onCameraSwitchAvailability,
