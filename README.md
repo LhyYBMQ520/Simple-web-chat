@@ -330,7 +330,7 @@ Simple-web-chat/
 - **对象存储服务**：以 Cloudflare R2 为默认实现，提供预签名上传 URL、带 `response-content-disposition` 的预签名下载 URL（307 重定向，不经过应用服务器传输文件流），并在撤回文件消息时请求删除对象
 - **文件上传校验**：前后端双重校验文件大小，限制值由 `MAX_FILE_SIZE` 环境变量统一控制，通过 `/js/config.js` 动态注入前端
 - **动态前端配置**：`/js/config.js` 由服务端动态生成并禁用缓存，向浏览器注入 `MAX_FILE_SIZE`、WebRTC ICE 服务器及 TURN 可用状态
-- **WebRTC 信令转发**：支持 8 种信令消息类型（callRequest/callAccept/callReject/callEnd/callRestart/callOffer/callAnswer/iceCandidate），服务端纯转发 + 详细日志（ICE 重启请求、ICE 候选类型/协议、SDP 协商阶段）
+- **WebRTC 信令转发**：支持通话请求、接受、拒绝、挂断、媒体状态、ICE 重启、SDP 和 ICE 候选等信令，服务端纯转发 + 详细日志（媒体降级、ICE 重启请求、ICE 候选类型/协议、SDP 协商阶段）
 
 ### 前端实现
 
@@ -468,6 +468,10 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 {type: "callAccept", from: "peerUID"}
 {type: "callReject", from: "peerUID", reason: "busy|declined|error"}
 {type: "callEnd", to: "peerUID"}
+
+// 通话媒体状态变化（例如屏幕源停止后降级为语音）
+{type: "callMediaState", to: "peerUID", mediaType: "audio", reason: "screen_ended"}
+{type: "callMediaState", from: "peerUID", mediaType: "audio", reason: "screen_ended"}
 
 // 通话中请求重新建立 ICE 媒体路径
 {type: "callRestart", to: "peerUID"}

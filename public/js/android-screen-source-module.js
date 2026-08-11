@@ -37,6 +37,7 @@
       pendingCandidates: [],
       remoteDescriptionSet: false,
       pendingAcquireReject: null,
+      keepAliveTimer: null,
       disconnectTimer: null
     };
 
@@ -228,6 +229,10 @@
     }
 
     function closeResources(sendClose) {
+      if (source.keepAliveTimer) {
+        clearInterval(source.keepAliveTimer);
+        source.keepAliveTimer = null;
+      }
       if (source.disconnectTimer) {
         clearTimeout(source.disconnectTimer);
         source.disconnectTimer = null;
@@ -330,13 +335,28 @@
       // The event handler above needs these callbacks before the WebSocket can deliver an offer.
       source.socket = new WebSocket(wsUrl);
       source.socket.binaryType = 'arraybuffer';
+      source.socket.onopen = function () {
+        if (source.keepAliveTimer) clearInterval(source.keepAliveTimer);
+        source.keepAliveTimer = setInterval(function () {
+          sendJson({ type: 'ping' });
+        }, 2000);
+      };
       source.socket.onmessage = handleSocketMessage;
       source.socket.onerror = function () {
         if (!source.acquired) rejectAcquire(new AndroidScreenSourceError('SIGNALING', 'Android 屏幕源 WebRTC 连接失败', false));
         emitEnded('socket_error');
       };
-      source.socket.onclose = function () {
+      source.socket.onclose = function (event) {
         if (!source.acquired) rejectAcquire(new AndroidScreenSourceError('SIGNALING', 'Android 屏幕源连接已关闭', false));
+        console.warn('[Android 屏幕源] WebSocket 关闭:', event && event.code, event && event.reason,
+          '| 本机 PeerConnection:', source.pc && source.pc.connectionState);
+        if (source.acquired && source.pc && source.pc.connectionState === 'connected') {
+          // The app uses this socket for signaling and PCM delivery. An
+          // unexpected socket close does not necessarily stop the already
+          // connected video PeerConnection, so keep the screen track alive.
+          notifyWarning('Android 系统音频连接已断开，屏幕画面仍在继续');
+          return;
+        }
         emitEnded('socket_closed');
       };
 

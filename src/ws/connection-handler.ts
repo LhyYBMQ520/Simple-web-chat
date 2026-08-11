@@ -8,6 +8,7 @@ import {
   handleCallAccept,
   handleCallReject,
   handleCallEnd,
+  handleCallMediaState,
   handleCallRestart,
   handleCallOffer,
   handleCallAnswer,
@@ -45,6 +46,7 @@ type WSMessage =
   | { type: 'callAccept'; from: string }
   | { type: 'callReject'; from: string; reason?: unknown }
   | { type: 'callEnd'; to: string }
+  | { type: 'callMediaState'; to: string; mediaType: unknown; reason?: unknown }
   | { type: 'callRestart'; to: string }
   | { type: 'callOffer'; to: string; sdp: unknown }
   | { type: 'callAnswer'; to: string; sdp: unknown }
@@ -481,6 +483,12 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
         if (msg.type === 'callEnd') {
           if (!uid) return;
           handleCallEnd({ clients, uidService }, uid, msg);
+          return;
+        }
+
+        if (msg.type === 'callMediaState') {
+          if (!uid || uidService.isUIDExpired(uid)) return;
+          handleCallMediaState({ clients, uidService }, uid, msg);
           return;
         }
 

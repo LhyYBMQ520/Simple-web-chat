@@ -69,6 +69,26 @@ export function handleCallEnd(deps: SignalingDeps, uid: string, msg: { to: strin
   }
 }
 
+export function handleCallMediaState(
+  deps: SignalingDeps,
+  uid: string,
+  msg: { to: string; mediaType: unknown; reason?: unknown }
+): void {
+  const target = deps.clients.get(msg.to);
+  const mediaType = String(msg.mediaType || 'audio');
+  const reason = typeof msg.reason === 'string' ? msg.reason : 'media_changed';
+
+  if (!['audio', 'video', 'screen'].includes(mediaType)) {
+    sendJSON(deps.clients.get(uid)!.ws, { type: 'error', message: '不支持的媒体状态' });
+    return;
+  }
+
+  console.log(`[媒体状态] ${peerLabel(uid)} -> ${peerLabel(msg.to)} | 类型: ${mediaType} | 原因: ${reason}`);
+  if (target && !deps.uidService.isUIDExpired(msg.to) && target.ws.readyState === WebSocket.OPEN) {
+    sendJSON(target.ws, { type: 'callMediaState', from: uid, mediaType, reason });
+  }
+}
+
 export function handleCallRestart(deps: SignalingDeps, uid: string, msg: { to: string }): void {
   const target = deps.clients.get(msg.to);
 

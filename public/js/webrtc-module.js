@@ -17,6 +17,7 @@
     var connectionStatusPending = false;
     var remoteSystemAudioMids = Object.create(null);
     var screenEndHandling = false;
+    var remoteScreenEndNotified = false;
     var SCREEN_SHARE_UNSUPPORTED_MESSAGE = '当前浏览器/系统未作兼容，或当前浏览器/系统不支持此功能。';
     var QUALITY_PROFILES = {
       auto: {
@@ -139,10 +140,7 @@
       pc.ontrack = function (event) {
         if (event.track && event.track.kind === 'video') {
           event.track.onended = function () {
-            if (wrtc.callState === 'connected' && wrtc.callType === 'screen' &&
-                handlers.onRemoteScreenShareEnded) {
-              handlers.onRemoteScreenShareEnded();
-            }
+            notifyRemoteScreenShareEnded();
           };
         }
         if (event.streams && event.streams[0]) {
@@ -755,6 +753,7 @@
       wrtc.screenSource = null;
       wrtc.screenShareActive = false;
       screenEndHandling = false;
+      remoteScreenEndNotified = false;
       cameraFacingMode = 'user';
       wrtc.pendingCandidates = [];
       wrtc.prePcCandidates = [];
@@ -1018,6 +1017,19 @@
       }
     }
 
+    function notifyRemoteScreenShareEnded() {
+      if (remoteScreenEndNotified || wrtc.callState !== 'connected' || wrtc.callType !== 'screen') return;
+      remoteScreenEndNotified = true;
+      if (handlers.onRemoteScreenShareEnded) handlers.onRemoteScreenShareEnded();
+    }
+
+    function handleRemoteMediaState(from, mediaType, reason) {
+      if (from !== wrtc.callPeerId || wrtc.callState === 'idle') return;
+      if (mediaType === 'audio' && wrtc.callType === 'screen') {
+        notifyRemoteScreenShareEnded();
+      }
+    }
+
     function handleRemoteEndCall() {
       if (wrtc.callState === 'idle') return;
 
@@ -1098,6 +1110,10 @@
       wrtc.screenSource = null;
       wrtc.screenShareActive = false;
       wrtc.isVideoOff = true;
+
+      if (wrtc.callState === 'connected' && wrtc.callPeerId && wsModule.sendCallMediaState) {
+        wsModule.sendCallMediaState(wrtc.callPeerId, 'audio', reason || 'screen_ended');
+      }
 
       if (handlers.onLocalStream && localStream) handlers.onLocalStream(localStream);
       if (handlers.onScreenShareEnded) {
@@ -1661,6 +1677,8 @@
 
       if (wrtc.callState === 'ringing') {
         wsModule.sendCallReject(wrtc.callPeerId, 'error');
+      } else if ((wrtc.callState === 'calling' || wrtc.callState === 'connected') && wrtc.callPeerId) {
+        wsModule.sendCallEnd(wrtc.callPeerId);
       }
 
       cleanupMedia();
@@ -1720,6 +1738,7 @@
       wrtc.screenSource = null;
       wrtc.screenShareActive = false;
       screenEndHandling = false;
+      remoteScreenEndNotified = false;
       cameraFacingMode = 'user';
       remoteRelayProtocols = Object.create(null);
       remoteSystemAudioMids = Object.create(null);
@@ -1766,6 +1785,7 @@
       handleRestartRequest: handleRestartRequest,
       handleSignalingReconnected: handleSignalingReconnected,
       handleRemoteEndCall: handleRemoteEndCall,
+      handleRemoteMediaState: handleRemoteMediaState,
       isTurnConfigured: isTurnConfigured,
       setForceRelay: setForceRelay,
       setQualityProfile: setQualityProfile,

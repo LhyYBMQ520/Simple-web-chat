@@ -102,6 +102,10 @@
       return sendJSON({ type: 'callEnd', to });
     }
 
+    function sendCallMediaState(to, mediaType, reason) {
+      return sendJSON({ type: 'callMediaState', to, mediaType, reason });
+    }
+
     function sendCallRestart(to) {
       return sendJSON({ type: 'callRestart', to });
     }
@@ -211,6 +215,11 @@
           return;
         }
 
+        if (d.type === 'callMediaState') {
+          handlers.onCallMediaState(d);
+          return;
+        }
+
         if (d.type === 'callRestart') {
           handlers.onCallRestart(d);
           return;
@@ -258,6 +267,7 @@
       sendCallAccept,
       sendCallReject,
       sendCallEnd,
+      sendCallMediaState,
       sendCallRestart,
       sendCallOffer,
       sendCallAnswer,

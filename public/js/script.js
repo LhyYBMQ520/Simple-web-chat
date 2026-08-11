@@ -357,6 +357,11 @@
     webrtcModule.handleRemoteEndCall();
   }
 
+  function handleCallMediaState(d) {
+    if (!webrtcModule) return;
+    webrtcModule.handleRemoteMediaState(d.from, d.mediaType, d.reason);
+  }
+
   function handleCallRestart(d) {
     if (!webrtcModule) return;
     webrtcModule.handleRestartRequest(d.from);
@@ -492,6 +497,7 @@
       onCallAccept: handleCallAccept,
       onCallReject: handleCallReject,
       onCallEnd: handleRemoteCallEnd,
+      onCallMediaState: handleCallMediaState,
       onCallRestart: handleCallRestart,
       onCallOffer: handleCallOffer,
       onCallAnswer: handleCallAnswer,
