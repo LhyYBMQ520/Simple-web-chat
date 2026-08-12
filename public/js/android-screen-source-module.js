@@ -38,7 +38,8 @@
       remoteDescriptionSet: false,
       pendingAcquireReject: null,
       keepAliveTimer: null,
-      disconnectTimer: null
+      disconnectTimer: null,
+      ownedTracks: new Set()
     };
 
     function notifyWarning(message) {
@@ -135,7 +136,10 @@
     }
 
     async function setupPcmAudio(status) {
-      if (status.systemAudio !== true) return null;
+      if (status.systemAudio !== true) {
+        notifyWarning('系统音频采集不可用，将继续共享屏幕和网页麦克风');
+        return null;
+      }
       if (!global.AudioContext && !global.webkitAudioContext) {
         notifyWarning('当前浏览器不支持 AudioWorklet，系统音频不可用');
         return null;
@@ -143,7 +147,7 @@
       const AudioContextCtor = global.AudioContext || global.webkitAudioContext;
       let context;
       try {
-        context = new AudioContextCtor({ sampleRate: 48000, latencyHint: 'interactive' });
+        context = new AudioContextCtor({ sampleRate: 48000, latencyHint: 0.08 });
         source.audioContext = context;
         if (context.sampleRate !== 48000) {
           throw new Error('浏览器未提供 48kHz AudioContext');
@@ -160,10 +164,18 @@
         const destination = context.createMediaStreamDestination();
         node.connect(destination);
         node.port.postMessage({ type: 'configure', sampleRate: 48000 });
+        node.port.onmessage = function (event) {
+          const data = event.data || {};
+          if (data.type !== 'stats') return;
+          console.log('[Android 系统音频缓冲] ' + data.bufferedMs + 'ms' +
+            ' | underrun=' + data.underruns + ' | overflow=' + data.overflowFrames);
+        };
         source.audioNode = node;
         source.audioDestination = destination;
         if (typeof context.resume === 'function') await context.resume();
-        return destination.stream.getAudioTracks()[0] || null;
+        const track = destination.stream.getAudioTracks()[0] || null;
+        if (track) source.ownedTracks.add(track);
+        return track;
       } catch (err) {
         console.warn('[Android 屏幕源] 系统音频初始化失败:', err);
         notifyWarning('系统音频暂不可用，将继续共享屏幕和网页麦克风');
@@ -265,9 +277,13 @@
         source.audioContext = null;
       }
       if (source.stream) {
-        source.stream.getTracks().forEach(function (track) { track.stop(); });
+        source.ownedTracks.forEach(function (track) {
+          if (track.readyState !== 'ended') track.stop();
+          if (typeof source.stream.removeTrack === 'function') source.stream.removeTrack(track);
+        });
         source.stream = null;
       }
+      source.ownedTracks.clear();
       source.pendingCandidates = [];
       source.remoteDescriptionSet = false;
       source.acquired = false;
@@ -302,6 +318,7 @@
       };
       source.pc.ontrack = function (event) {
         if (!event.track || event.track.kind !== 'video') return;
+        source.ownedTracks.add(event.track);
         source.stream.addTrack(event.track);
         if (!source.acquired) {
           source.acquired = true;

@@ -321,6 +321,9 @@
       if (err && err.androidSourceError && err.androidSourceError.code === 'NOT_READY') {
         return '请先打开 Screensharing App，点击“授权并开始”并完成系统屏幕共享授权';
       }
+      if (err && err.androidSourceError && err.androidSourceError.code === 'UNAVAILABLE') {
+        return SCREEN_SHARE_UNSUPPORTED_MESSAGE + ' 请打开本机 Screensharing App 后重试。';
+      }
       if (err && err.name === 'AndroidScreenSourceEndedError') {
         return 'Android 屏幕共享已停止';
       }
@@ -332,7 +335,10 @@
         err.name === 'SecurityError' ||
         err.name === 'TypeError'
       )) {
-        return SCREEN_SHARE_UNSUPPORTED_MESSAGE;
+        var nativeFactory = getNativeScreenSourceFactory();
+        var isAndroid = nativeFactory && typeof nativeFactory.isAndroidDevice === 'function' &&
+          nativeFactory.isAndroidDevice();
+        return SCREEN_SHARE_UNSUPPORTED_MESSAGE + (isAndroid ? ' 请打开本机 Screensharing App 后重试。' : '');
       }
       if (err && err.name === 'NotAllowedError') {
         return '已取消屏幕共享，或未授予屏幕捕捉权限';
