@@ -137,7 +137,7 @@
 
     async function setupPcmAudio(status) {
       if (status.systemAudio !== true) {
-        notifyWarning('系统音频采集不可用，将继续共享屏幕和网页麦克风');
+        notifyWarning('系统音频采集不可用，将继续共享屏幕和网页麦克风，如需要开启此功能请到 APP 端放行录音权限');
         return null;
       }
       if (!global.AudioContext && !global.webkitAudioContext) {
