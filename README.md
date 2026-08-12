@@ -23,14 +23,14 @@
 - **🖼️ 图片与文件传输**：配置 Cloudflare R2 后可发送图片（支持灯箱预览）和文件，文件流由浏览器直传/直下，不经过应用服务器
 - **📶 连接状态与延迟**：会话列表标题右侧实时显示与服务器连接状态及网络延迟
 - **📱 响应式设计**：适配桌面端和移动端布局（尽量吧。。。移动端的不确定性太多了），并针对窄屏调整会话与输入交互
-- **📞 音视频通话**：基于 WebRTC 的实时语音、视频和屏幕共享（浏览器支持时可共享系统音频），支持静音、摄像头开关、前后摄像头切换、可用音频输出选择、连接模式显示（LAN/P2P/UDP 中继/TCP 中继）、强制 TURN 中继及 RTT 延迟；通话中切换网络时自动执行 ICE restart 恢复媒体连接
+- **📞 音视频通话**：基于 WebRTC 的实时语音、视频和屏幕共享（浏览器支持时可共享系统音频）；Android 浏览器优先使用本机 Screensharing App （暂时不开源）的 WebRTC 屏幕源，系统音频经 PCM WebSocket 和 AudioWorklet 接入，网页继续采集麦克风；原生源不可用时回退浏览器屏幕采集，屏幕源停止时保留通话并降级为语音；支持静音、摄像头开关、前后摄像头切换、可用音频输出选择、连接模式显示、强制 TURN 中继、RTT 延迟及网络切换后的 ICE restart
 - **⚙️ 核心功能零配置**：不配置 R2 或 TURN 也能使用文字聊天；文件传输和复杂网络下的通话中继需另行配置
 
 ## 🛠️ 技术栈
 
 - **前端**：HTML5、CSS3、JavaScript、WebSocket、WebRTC
 - **后端**：Node.js、TypeScript、Express、WebSocket (ws)
-- **运行时**：tsx（TypeScript 直接运行，无需预编译）
+- **运行时**：tsx（TypeScript 直接运行，无需预编译，生产环境还是建议先 build 再 start ）
 - **数据库**：SQLite3 (better-sqlite3)
 - **UI 图标库**：FontAwesome 7.2.0（已本地化）
 - **字体**：Google Fonts（Noto Sans SC / JP / KR + Noto Color Emoji）
@@ -62,7 +62,7 @@
 
 ### 前置要求
 
-- **Node.js** 20、22 或 24（推荐当前 LTS 版本 24；`better-sqlite3 12.x` 不支持 Node.js 18）
+- **Node.js** 20+（推荐当前 LTS 版本 24；`better-sqlite3 12.x` 不支持 Node.js 18）
 - **pnpm**（推荐）包管理器
 
 > 安装 Node.js：[官网下载](https://nodejs.org/) 或使用 [nvm-windows](https://github.com/coreybutler/nvm-windows)（Windows）/ [nvm](https://github.com/nvm-sh/nvm)（macOS/Linux）
@@ -104,14 +104,7 @@ STORAGE_PUBLIC_URL=https://cdn.yourdomain.com  # 自定义域名需绑定到存�
 STORAGE_REGION=auto
 MAX_FILE_SIZE=10485760
 UPLOAD_URL_EXPIRY=300
-
-# === WebRTC TURN 中继（可选，不配置则仅支持局域网/P2P，STUN默认为 Google 公共 STUN 服务） ===
-TURN_SERVER_URLS=turn:your-coturn-server.com:3478?transport=udp;turn:your-coturn-server.com:3478?transport=tcp
-TURN_USERNAME=your-username
-TURN_CREDENTIAL=your-password
 ```
-
-`TURN_SERVER_URLS` 支持使用分号、逗号或空格分隔多个 `turn:` / `turns:` 地址，建议同时配置 UDP 和 TCP 地址。
 
 > **获取 R2 凭据**：Cloudflare 控制台 → R2 → 创建存储桶 → 管理 API 令牌。Access Key 和 Secret Key 在 API 令牌页面获取。
 
@@ -140,6 +133,20 @@ TURN_CREDENTIAL=your-password
 > R2 CORS 策略必须使用 JSON 格式。建议让 `AllowedOrigins` 精确匹配实际来源（仅包含 `scheme://host[:port]`，不要带路径或末尾 `/`）：本地开发填 `http://localhost:21451`，部署后改为你的 HTTPS 域名。浏览器使用预签名 URL 直传时，CORS 是必需的。
 
 若不配置对象存储，纯文本聊天功能不受影响。
+
+#### 4. 配置 WebRTC TURN 中继（可选）
+
+TURN 与 R2 相互独立。未配置 TURN 时，通话仍会使用 Google 公共 STUN 尝试局域网或 P2P 直连，但在严格 NAT、防火墙或部分移动网络下可能无法建立媒体连接。
+
+在 `.env` 中添加：
+
+```env
+TURN_SERVER_URLS=turn:your-coturn-server.com:3478?transport=udp;turn:your-coturn-server.com:3478?transport=tcp
+TURN_USERNAME=your-username
+TURN_CREDENTIAL=your-password
+```
+
+`TURN_SERVER_URLS` 支持使用分号、逗号或空格分隔多个 `turn:` / `turns:` 地址，建议同时配置 UDP 和 TCP 地址。配置完成后重启服务并刷新网页，通话菜单中的“中继”开关才会可用。
 
 ---
 
@@ -228,8 +235,18 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 - **连接状态显示**：在“会话列表”标题右侧显示连接中/重连中/已断开/已连接等状态图标
 - **连接延迟显示**：已连接时显示与服务器的实时延迟（ms）
 - **ID 有效期**：ID 有 24 小时有效期，过期后页面会自动生成新 ID
-- **通话功能**：会话标题栏右侧的通话下拉菜单可选择语音通话、视频通话或屏幕共享，并设置自动/省流/标准/高清质量档位及麦克风回声消除、降噪、自动增益（部分移动浏览器不支持主动共享屏幕，不支持时会显示明确提示）；Android 浏览器发起屏幕共享时会优先连接本机 Screensharing App 的 WebRTC 视频和系统音频源，网页继续采集麦克风；原生源不可用时回退浏览器屏幕采集；每次通话的模式在发起时固定，如需换模式必须先挂断；通话浮层显示当前会话，语音通话可最小化为状态胶囊，视频和屏幕共享可最小化为跟随主画面比例的悬浮窗或通过 Fullscreen API 进入浏览器真全屏；连接信息区显示 ICE 模式、RTT、实际发送或接收码率、分辨率、帧率、质量限制原因、丢包和抖动；屏幕源停止时通话保留并降级为纯语音；网络切换时自动重新协商，无需挂断重拨
+- **通话功能**：会话标题栏右侧的通话下拉菜单可选择语音通话、视频通话或屏幕共享，并设置自动/省流/标准/高清质量档位及麦克风回声消除、降噪、自动增益（部分移动浏览器不支持主动共享屏幕，不支持时会显示明确提示）；Android 浏览器发起屏幕共享时会优先连接本机自研软件 Screensharing App 的 WebRTC 视频和系统音频源，网页继续采集麦克风；原生源不可用时回退浏览器屏幕采集；除屏幕源停止后自动降级为语音外，通话模式不能在通话中主动切换；通话浮层显示当前会话，语音通话可最小化为状态胶囊，视频和屏幕共享可最小化为跟随主画面比例的悬浮窗或通过 Fullscreen API 进入浏览器真全屏；连接信息区显示 ICE 模式、RTT、实际发送或接收码率、分辨率、帧率、质量限制原因、丢包和抖动；屏幕源停止时通话保留并降级为纯语音；网络切换时自动重新协商，无需挂断重拨
 - **强制中继**：TURN 配置有效时，会话标题栏的“中继”开关可让本端发起的新通话仅使用 TURN；开关只影响发起方，不影响本端接听的来电，且通话中会锁定以避免误以为当前连接策略可即时切换
+
+### Android 本机屏幕共享
+
+- Android 浏览器仅在 User-Agent 判定为 Android 时探测 `http://127.0.0.1:18765/status`，桌面浏览器不会访问本机 Screensharing App 接口
+- 使用前需在 Screensharing App 中完成屏幕共享授权；App 的录音权限只用于系统播放音频采集，不采集麦克风，网页麦克风仍由浏览器单独授权和采集
+- App 未启动或未就绪时，网页会尝试回退浏览器原生屏幕共享；Android 浏览器也不支持时，错误提示会引导用户打开 Screensharing App
+- 拒绝 App 录音权限不会影响屏幕和网页麦克风，网页会提示系统音频不可用
+- App 停止或屏幕权限撤销后，网页只移除 Android 视频和系统音频轨道，保留网页麦克风，并通过 `callMediaState` 和 SDP 重协商让双方同步降级为语音
+- App 负责在横竖屏切换时更新 VirtualDisplay 和采集 Surface；网页根据收到的视频尺寸重新计算普通、悬浮和全屏画面比例
+- Android 若提示权限请求被其他应用的气泡或叠加层阻止，需要先关闭聊天气泡、翻译悬浮按钮、录屏浮窗或系统侧边栏后重试
 
 ### 强制 TURN 中继
 
@@ -252,6 +269,7 @@ pnpm typecheck      # 仅检查 TypeScript 类型，不产出文件
 
 - 麦克风统一请求 48kHz / 16bit / 单声道，使用 `speech` 语音内容提示，默认开启回声消除、降噪和自动增益；三项处理仍可在通话菜单中分别关闭
 - 浏览器原生屏幕共享的系统音频请求 48kHz / 16bit / 双声道，使用 `music` 内容提示并关闭回声消除、降噪和自动增益；Android 本机源通过 WebSocket 传输 48kHz / 16bit / 双声道 PCM，再由网页 AudioWorklet 转换为系统音频轨道
+- Android PCM 播放使用约 80ms 预缓冲、欠载后重新缓冲和短淡入淡出，控制台每 5 秒记录缓冲时长、underrun 和 overflow；系统音频不可用时提示用户，但屏幕和网页麦克风仍可继续使用
 - 仅系统音频对应的 Opus 媒体段协商 `stereo=1;sprop-stereo=1`；麦克风媒体段主动移除立体声参数
 - WebRTC 仍会在弱网、编码器过载或浏览器限制时自动降低实际码率与帧率
 - 屏幕共享使用 `maintain-framerate` 帧数优先降级策略，网络或编码压力较大时优先降低分辨率/画面质量；摄像头仍使用 `balanced`
@@ -348,7 +366,7 @@ Simple-web-chat/
 - **UID 状态显示**：实时显示 UID 剩余有效期，即将过期时带有警告标识
 - **输入框交互**：桌面 Enter 发送 / 移动端 Enter 换行；粘贴保留原始换行格式；自动高度扩展；空内容禁用发送；表情面板支持搜索和分类；引用回复支持
 - **文件上传**：支持图片和文件上传，预签名 URL 直传 R2；前端预检文件大小、类型，超限直接拦截；未知类型回退为 `application/octet-stream`；上传期间切换会话不会发错目标（入口会固定目标 ID）
-- **WebRTC 通话**：语音/视频/屏幕共享三种固定通话模式；Android 屏幕共享通过独立本机 PeerConnection 接收视频，并将 PCM 系统音频经 AudioWorklet 转换为媒体轨道，网页麦克风仍由浏览器采集；当前会话标题、语音状态胶囊、按主画面比例自适应的视频/共享悬浮窗及浏览器真全屏；自动/省流/标准/高清采集和发送档位；原生麦克风处理开关；前后摄像头和可用音频输出切换；通过 `RTCRtpSender.setParameters()` 控制码率与帧率上限；实时显示连接模式、RTT、发送/接收码率、分辨率、帧率、丢包和抖动；使用完整 ICE restart 自动恢复 Wi-Fi/移动网络切换
+- **WebRTC 通话**：语音/视频/屏幕共享三种固定通话模式；Android 屏幕共享通过独立本机 PeerConnection 接收视频，并将 PCM 系统音频经 AudioWorklet 转换为媒体轨道，网页麦克风仍由浏览器采集；当前会话标题、语音状态胶囊、按主画面比例自适应的视频/共享悬浮窗及浏览器真全屏；屏幕源停止后通过媒体状态信令同步并降级为语音；自动/省流/标准/高清采集和发送档位；原生麦克风处理开关；前后摄像头和可用音频输出切换；通过 `RTCRtpSender.setParameters()` 控制码率与帧率上限；实时显示连接模式、RTT、发送/接收码率、分辨率、帧率、丢包和抖动；使用完整 ICE restart 自动恢复 Wi-Fi/移动网络切换
 
 ## 📊 数据库设计
 
