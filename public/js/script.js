@@ -734,6 +734,7 @@
     var callMinimizeBtn = document.getElementById('callMinimizeBtn');
     var callRestoreBtn = document.getElementById('callRestoreBtn');
     var callFocusBtn = document.getElementById('callFocusBtn');
+    var callPictureInPictureBtn = document.getElementById('callPictureInPictureBtn');
     var callFocusExitBtn = document.getElementById('callFocusExitBtn');
     var callEndBtn = document.getElementById('callEndBtn');
 
@@ -759,6 +760,9 @@
     if (callMinimizeBtn) callMinimizeBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.minimizeCallWindow(); };
     if (callRestoreBtn) callRestoreBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.restoreCallWindow(); };
     if (callFocusBtn) callFocusBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.focusCallVideo(); };
+    if (callPictureInPictureBtn) callPictureInPictureBtn.onclick = function () {
+      if (webrtcUIModule) webrtcUIModule.togglePictureInPicture();
+    };
     if (callFocusExitBtn) callFocusExitBtn.onclick = function () { if (webrtcUIModule) webrtcUIModule.restoreCallWindow(); };
     if (callEndBtn) callEndBtn.onclick = function () { if (webrtcModule) webrtcModule.endCall(true); };
 

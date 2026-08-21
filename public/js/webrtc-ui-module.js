@@ -55,6 +55,50 @@
       button.setAttribute('aria-label', label);
     }
 
+    function getPictureInPictureVideo() {
+      var video = getMainVideoElement();
+      if (!video || typeof video.requestPictureInPicture !== 'function') return null;
+      if (video.disablePictureInPicture) return null;
+      if (video.readyState < 2) return null;
+      return video;
+    }
+
+    function updatePictureInPictureButtonState() {
+      var button = document.getElementById('callPictureInPictureBtn');
+      if (!button) return;
+      var isVideoCall = currentCallType === 'video' || currentCallType === 'screen';
+      var isSupported = Boolean(isVideoCall && document.pictureInPictureEnabled !== false && getPictureInPictureVideo());
+      var isActive = Boolean(document.pictureInPictureElement);
+      button.style.display = isVideoCall ? 'flex' : 'none';
+      button.disabled = !isSupported && !isActive;
+      button.title = isActive ? '退出浏览器外小窗' : (isSupported ? '在浏览器外小窗播放' : '当前浏览器不支持画中画');
+      button.setAttribute('aria-label', button.title);
+      button.innerHTML = '<i class="fa-solid ' + (isActive ? 'fa-clone' : 'fa-clone') + '"></i>';
+    }
+
+    function togglePictureInPicture() {
+      var active = document.pictureInPictureElement;
+      if (active && typeof document.exitPictureInPicture === 'function') {
+        return document.exitPictureInPicture().catch(function (err) {
+          console.warn('[通话画中画] 退出失败:', err);
+          return false;
+        });
+      }
+      var video = getPictureInPictureVideo();
+      if (!video) {
+        updatePictureInPictureButtonState();
+        return Promise.resolve(false);
+      }
+      return video.requestPictureInPicture().then(function () {
+        updatePictureInPictureButtonState();
+        return true;
+      }).catch(function (err) {
+        console.warn('[通话画中画] 浏览器拒绝进入:', err);
+        updatePictureInPictureButtonState();
+        return false;
+      });
+    }
+
     function getMainVideoElement() {
       if (currentCallType === 'screen' && hasLocalVideo && !hasRemoteVideo) {
         return document.getElementById('localVideo');
@@ -98,6 +142,8 @@
         if (!video || typeof video.addEventListener !== 'function') return;
         video.addEventListener('loadedmetadata', updateMinimizedVideoSize);
         video.addEventListener('resize', updateMinimizedVideoSize);
+        video.addEventListener('enterpictureinpicture', updatePictureInPictureButtonState);
+        video.addEventListener('leavepictureinpicture', updatePictureInPictureButtonState);
       });
       if (typeof global.addEventListener === 'function') {
         global.addEventListener('resize', updateMinimizedVideoSize);
@@ -324,6 +370,7 @@
       if (cameraSwitchBtn) cameraSwitchBtn.style.display = 'none';
       if (audioOutputBtn) audioOutputBtn.style.display = 'flex';
       updateFullscreenButtonState();
+      updatePictureInPictureButtonState();
       updateMinimizedVideoSize();
 
       // 每次打开通话界面时重置控制按钮状态，避免上次通话的残留 UI 状态
@@ -364,6 +411,9 @@
           overlay.style.removeProperty('--call-mini-height');
           overlay.style.removeProperty('--call-mini-aspect-ratio');
         }
+      }
+      if (document.pictureInPictureElement && typeof document.exitPictureInPicture === 'function') {
+        document.exitPictureInPicture().catch(function () {});
       }
       stopDurationTimer();
       currentCallType = null;
@@ -457,6 +507,7 @@
       if (videoContainer) videoContainer.style.display = 'none';
       updateStatusText('语音通话中');
       updateFullscreenButtonState();
+      updatePictureInPictureButtonState();
     }
 
     function updateMuteButton(isMuted) {
@@ -785,6 +836,7 @@
       minimizeCallWindow: minimizeCallWindow,
       restoreCallWindow: restoreCallWindow,
       focusCallVideo: focusCallVideo,
+      togglePictureInPicture: togglePictureInPicture,
       updateStatusText: updateStatusText,
       setRemoteVideo: setRemoteVideo,
       setLocalVideo: setLocalVideo,
