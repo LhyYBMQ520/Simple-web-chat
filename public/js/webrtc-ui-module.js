@@ -10,6 +10,8 @@
     var hasLocalVideo = false;
     var videoAspectListenersBound = false;
     var fullscreenListenersBound = false;
+    var dragListenersBound = false;
+    var dragState = null;
 
     function getOverlay() {
       return document.getElementById('callOverlay');
@@ -162,6 +164,68 @@
       document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     }
 
+    function clampWindowPosition(overlay, left, top) {
+      var viewportWidth = Number(global.innerWidth) || document.documentElement.clientWidth || 360;
+      var viewportHeight = Number(global.innerHeight) || document.documentElement.clientHeight || 640;
+      var width = overlay.offsetWidth || 0;
+      var height = overlay.offsetHeight || 0;
+      var margin = 8;
+      return {
+        left: Math.max(margin, Math.min(left, Math.max(margin, viewportWidth - width - margin))),
+        top: Math.max(margin, Math.min(top, Math.max(margin, viewportHeight - height - margin)))
+      };
+    }
+
+    function positionDraggedWindow(overlay, clientX, clientY) {
+      if (!dragState || dragState.overlay !== overlay) return;
+      var position = clampWindowPosition(
+        overlay,
+        clientX - dragState.offsetX,
+        clientY - dragState.offsetY
+      );
+      overlay.style.left = Math.round(position.left) + 'px';
+      overlay.style.top = Math.round(position.top) + 'px';
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+    }
+
+    function endWindowDrag(event) {
+      if (!dragState) return;
+      var overlay = dragState.overlay;
+      dragState = null;
+      if (overlay && typeof overlay.releasePointerCapture === 'function' && event && event.pointerId != null) {
+        try { overlay.releasePointerCapture(event.pointerId); } catch (err) { /* capture may already be released */ }
+      }
+      if (overlay) overlay.classList.remove('call-window-dragging');
+    }
+
+    function bindWindowDrag() {
+      if (dragListenersBound) return;
+      var overlay = getOverlay();
+      if (!overlay || typeof overlay.addEventListener !== 'function') return;
+      dragListenersBound = true;
+      overlay.addEventListener('pointerdown', function (event) {
+        if (currentWindowMode !== 'minimized' || event.button === 2) return;
+        var target = event.target;
+        if (target && typeof target.closest === 'function' && target.closest('button, input, select, textarea, a')) return;
+        var rect = overlay.getBoundingClientRect();
+        dragState = { overlay: overlay, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
+        overlay.classList.add('call-window-dragging');
+        if (typeof overlay.setPointerCapture === 'function') {
+          try { overlay.setPointerCapture(event.pointerId); } catch (err) { /* unsupported pointer capture */ }
+        }
+        event.preventDefault();
+      });
+      overlay.addEventListener('pointermove', function (event) {
+        if (!dragState) return;
+        positionDraggedWindow(overlay, event.clientX, event.clientY);
+        event.preventDefault();
+      });
+      overlay.addEventListener('pointerup', endWindowDrag);
+      overlay.addEventListener('pointercancel', endWindowDrag);
+      overlay.addEventListener('lostpointercapture', endWindowDrag);
+    }
+
     function setWindowMode(mode) {
       var overlay = getOverlay();
       if (!overlay || !currentCallType) return false;
@@ -169,6 +233,13 @@
       currentWindowMode = mode === 'minimized' || mode === 'focus' ? mode : 'normal';
       hideAudioOutputMenu();
       overlay.className = 'call-overlay call-type-' + currentCallType + ' call-window-' + currentWindowMode;
+      if (currentWindowMode !== 'minimized') {
+        overlay.style.left = '';
+        overlay.style.top = '';
+        overlay.style.right = '';
+        overlay.style.bottom = '';
+      }
+      bindWindowDrag();
       updateScreenVideoRole();
       return true;
     }
@@ -284,6 +355,10 @@
       if (overlay) {
         overlay.style.display = 'none';
         overlay.className = 'call-overlay';
+        overlay.style.left = '';
+        overlay.style.top = '';
+        overlay.style.right = '';
+        overlay.style.bottom = '';
         if (overlay.style && typeof overlay.style.removeProperty === 'function') {
           overlay.style.removeProperty('--call-mini-width');
           overlay.style.removeProperty('--call-mini-height');
