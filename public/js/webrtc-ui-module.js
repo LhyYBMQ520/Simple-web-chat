@@ -34,6 +34,7 @@
         currentCallType === 'screen' && hasLocalVideo && !hasRemoteVideo
       );
       updateFullscreenButtonState();
+      updatePictureInPictureButtonState();
       updateMinimizedVideoSize();
     }
 
@@ -142,6 +143,8 @@
         if (!video || typeof video.addEventListener !== 'function') return;
         video.addEventListener('loadedmetadata', updateMinimizedVideoSize);
         video.addEventListener('resize', updateMinimizedVideoSize);
+        video.addEventListener('loadedmetadata', updatePictureInPictureButtonState);
+        video.addEventListener('canplay', updatePictureInPictureButtonState);
         video.addEventListener('enterpictureinpicture', updatePictureInPictureButtonState);
         video.addEventListener('leavepictureinpicture', updatePictureInPictureButtonState);
       });
@@ -478,6 +481,7 @@
         video.srcObject = stream;
       }
       updateScreenVideoRole();
+      updatePictureInPictureButtonState();
     }
 
     function setLocalVideo(stream) {
@@ -488,6 +492,7 @@
         video.style.display = hasLocalVideo ? 'block' : 'none';
       }
       updateScreenVideoRole();
+      updatePictureInPictureButtonState();
     }
 
     function showScreenShareEnded() {
