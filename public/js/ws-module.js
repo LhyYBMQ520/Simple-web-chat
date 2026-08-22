@@ -2,6 +2,12 @@
   function createWsModule(options) {
     const { state, handlers } = options;
     let heartbeatTimer = null;
+    let reconnectTimer = null;
+    let reconnectAttempt = 0;
+    let connectInProgress = false;
+    let connectionStartedAt = 0;
+    let lastPongAt = 0;
+    let lifecycleListenersBound = false;
 
     function notifyConnectionState(nextState) {
       if (state.connectionState === nextState) return;
@@ -22,6 +28,60 @@
       return !!(state.ws && state.ws.readyState === WebSocket.OPEN);
     }
 
+    function clearReconnectTimer() {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    }
+
+    function scheduleReconnect(immediate) {
+      if (reconnectTimer || connectInProgress) return;
+      const delay = immediate ? 0 : Math.min(30000, 1000 * Math.pow(2, Math.min(reconnectAttempt, 5)));
+      reconnectAttempt++;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delay);
+    }
+
+    function ensureConnection(immediate) {
+      if (isOpen()) {
+        // A frozen mobile page can leave a socket object in OPEN state even
+        // though the underlying network path is gone.
+        if (lastPongAt && Date.now() - lastPongAt > 30000) {
+          const staleSocket = state.ws;
+          state.ws = null;
+          stopHeartbeat();
+          try { staleSocket.close(); } catch (err) {}
+          connectInProgress = false;
+          clearReconnectTimer();
+          scheduleReconnect(true);
+        }
+        return;
+      }
+      if (connectInProgress && connectionStartedAt && Date.now() - connectionStartedAt > 15000) {
+        const staleSocket = state.ws;
+        state.ws = null;
+        connectInProgress = false;
+        try { if (staleSocket) staleSocket.close(); } catch (err) {}
+      }
+      scheduleReconnect(immediate);
+    }
+
+    function bindLifecycleListeners() {
+      if (lifecycleListenersBound || typeof global.addEventListener !== 'function') return;
+      lifecycleListenersBound = true;
+      global.addEventListener('online', () => ensureConnection(true));
+      global.addEventListener('pageshow', () => ensureConnection(true));
+      global.addEventListener('focus', () => ensureConnection(true));
+      if (global.document && typeof global.document.addEventListener === 'function') {
+        global.document.addEventListener('visibilitychange', () => {
+          if (global.document.visibilityState === 'visible') ensureConnection(true);
+        });
+      }
+    }
+
     function sendJSON(payload) {
       if (!isOpen()) {
         return false;
@@ -38,6 +98,7 @@
     function startHeartbeat() {
       stopHeartbeat();
       sendPing();
+      lastPongAt = Date.now();
       heartbeatTimer = setInterval(() => {
         sendPing();
       }, 10000);
@@ -123,6 +184,11 @@
     }
 
     function connect() {
+      bindLifecycleListeners();
+      clearReconnectTimer();
+      if (connectInProgress) return;
+      connectInProgress = true;
+      connectionStartedAt = Date.now();
       notifyConnectionState('connecting');
 
       if (state.ws && state.ws.readyState !== WebSocket.CLOSED) {
@@ -130,19 +196,26 @@
       }
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      state.ws = new WebSocket(protocol + '//' + window.location.host);
+      const socket = new WebSocket(protocol + '//' + window.location.host);
+      state.ws = socket;
 
-      state.ws.onopen = () => {
+      socket.onopen = () => {
+        if (state.ws !== socket) return;
+        connectInProgress = false;
+        connectionStartedAt = 0;
+        reconnectAttempt = 0;
         notifyConnectionState('connected');
         notifyLatency(null);
-        state.ws.send(JSON.stringify({ type: 'bind', uid: state.myId }));
+        socket.send(JSON.stringify({ type: 'bind', uid: state.myId }));
         startHeartbeat();
       };
 
-      state.ws.onmessage = event => {
+      socket.onmessage = event => {
+        if (state.ws !== socket) return;
         const d = JSON.parse(event.data);
 
         if (d.type === 'pong') {
+          lastPongAt = Date.now();
           const serverEchoTs = Number(d.clientTime);
           if (Number.isFinite(serverEchoTs) && serverEchoTs > 0) {
             notifyLatency(Date.now() - serverEchoTs);
@@ -240,14 +313,18 @@
         }
       };
 
-      state.ws.onclose = () => {
+      socket.onclose = () => {
+        if (state.ws !== socket) return;
+        connectInProgress = false;
+        connectionStartedAt = 0;
         stopHeartbeat();
         notifyLatency(null);
         notifyConnectionState('reconnecting');
-        setTimeout(connect, 2000);
+        scheduleReconnect(false);
       };
 
-      state.ws.onerror = () => {
+      socket.onerror = () => {
+        if (state.ws !== socket) return;
         notifyConnectionState('disconnected');
       };
     }

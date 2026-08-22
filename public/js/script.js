@@ -256,6 +256,10 @@
     uidModule.updateUIDDisplay(state);
     console.log(`[UID 绑定成功] 状态: ${d.status} | 剩余: ${Math.floor(d.ttl / 1000)}秒`);
     wsModule.syncActiveChatState();
+    // 手机锁屏/切后台期间可能错过实时消息，连接恢复后从服务端补齐当前会话。
+    if (state.current) {
+      wsModule.sendGetHistory(state.current);
+    }
     if (webrtcModule && webrtcModule.isCallActive()) {
       webrtcModule.handleSignalingReconnected();
     }
