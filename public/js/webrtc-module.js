@@ -293,10 +293,7 @@
             throw err;
           }
 
-          return requestDisplayMedia({
-            video: createVideoConstraints('screen'),
-            audio: createSystemAudioConstraints()
-          }).then(configureSystemAudioTrack).then(function (screenStream) {
+          return requestDisplayMedia(createDisplayMediaOptions()).then(configureSystemAudioTrack).then(function (screenStream) {
             wrtc.screenSource = 'browser';
             wrtc.screenShareActive = true;
             return screenStream;
@@ -307,10 +304,7 @@
         });
       }
 
-      return requestDisplayMedia({
-        video: createVideoConstraints('screen'),
-        audio: createSystemAudioConstraints()
-      }).then(configureSystemAudioTrack).then(function (screenStream) {
+      return requestDisplayMedia(createDisplayMediaOptions()).then(configureSystemAudioTrack).then(function (screenStream) {
         wrtc.screenSource = 'browser';
         wrtc.screenShareActive = true;
         return screenStream;
@@ -380,7 +374,7 @@
       return constraints;
     }
 
-    function createSystemAudioConstraints() {
+    function createSystemAudioConstraints(includeOwnAudioFilter) {
       var supported = getSupportedMediaConstraints();
       var constraints = {};
       function add(name, value) {
@@ -392,7 +386,20 @@
       add('channelCount', { ideal: 2 });
       add('sampleRate', { ideal: 48000 });
       add('sampleSize', { ideal: 16 });
+      if (includeOwnAudioFilter) {
+        add('restrictOwnAudio', true);
+      }
       return constraints;
+    }
+
+    function createDisplayMediaOptions() {
+      return {
+        video: createVideoConstraints('screen'),
+        audio: createSystemAudioConstraints(true),
+        // Ask Chromium-based browsers not to offer this chat tab as a source.
+        // Browsers that do not implement the hint are expected to ignore it.
+        selfBrowserSurface: 'exclude'
+      };
     }
 
     function isSystemAudioTrack(track) {
