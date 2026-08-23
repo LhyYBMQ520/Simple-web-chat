@@ -4,12 +4,13 @@
 
 ## 📋 项目介绍
 
-用户无需注册即可获得唯一的临时 ID，通过交换 ID 建立会话并实时对话。消息按双方 ID 分库存入服务端 SQLite 数据库，在临时 ID 的生命周期内可加载历史记录；任一 ID 过期后，相关会话数据库会被清理。
+用户无需注册即可获得唯一的临时 ID，通过交换 ID 建立会话并实时对话。首次打开网页时也可以选择免注册永久账号：浏览器生成密钥对，服务端保存公钥，客户端使用私钥完成 challenge-response 登录。消息按身份类型分类存入服务端 SQLite 数据库，游客数据遵循 24 小时生命周期，永久账号数据不会因游客 UID 清理而删除。
 
 ## ✨ 主要特性
 
 - **⚡ 实时通信**：基于 WebSocket 的双向实时消息传输
 - **🆔 临时身份**：自动生成唯一用户 ID，有效期为 24 小时，到期后自动换新并清理关联会话数据
+- **🔐 免注册永久账号**：无需邮箱或密码，使用浏览器生成的 ECDSA P-256 密钥对完成身份认证；私钥保存在浏览器，可导出凭据用于清除网站数据后的恢复
 - **💾 消息存储**：使用 SQLite 数据库持久化聊天记录
 - **📋 会话管理**：支持多会话管理，易于切换
 - **👥 在线状态**：实时显示联系人在线/离线状态
@@ -300,12 +301,17 @@ Simple-web-chat/
 ├── tsconfig.json                   # TypeScript 编译配置
 ├── README.md                       # 项目说明
 ├── LICENSE                         # MIT 许可证
-├── db/                             # 会话数据库目录（运行时生成）
+├── db/                             # 分类数据库目录（运行时生成）
+│   ├── guest-chats/                # 游客与游客之间的聊天数据库
+│   ├── account-chats/              # 永久账号之间的聊天数据库
+│   ├── accounts/                   # 永久账号公钥与账号资料
+│   └── sessions/                   # 永久账号登录会话
 ├── src/                            # 服务端 TypeScript 模块
 │   ├── config/
 │   │   ├── constants.ts            # 路径、存储和 TURN 等配置
 │   │   └── webrtc-config.ts        # STUN/TURN ICE 服务器配置
 │   ├── services/
+│   │   ├── account-service.ts      # 永久账号、公钥认证与登录会话
 │   │   ├── session-db-service.ts   # 会话数据库与消息持久化
 │   │   ├── uid-service.ts          # UID 生命周期
 │   │   └── storage-service.ts      # R2/S3 预签名 URL
@@ -318,6 +324,7 @@ Simple-web-chat/
     │   └── style.css               # 全局样式
     ├── js/
     │   ├── app-state.js             # 前端状态
+    │   ├── account-module.js         # 永久账号密钥、认证与凭据导入导出
     │   ├── android-screen-source-module.js # Android 本机 WebRTC 屏幕源
     │   ├── android-pcm-worklet.js   # Android 系统音频 PCM AudioWorklet
     │   ├── uid-module.js            # UID 生成与展示

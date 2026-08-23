@@ -206,7 +206,9 @@
         reconnectAttempt = 0;
         notifyConnectionState('connected');
         notifyLatency(null);
-        socket.send(JSON.stringify({ type: 'bind', uid: state.myId }));
+        const bindPayload = { type: 'bind', uid: state.myId };
+        if (state.identityType === 'permanent' && state.accountSessionToken) bindPayload.authToken = state.accountSessionToken;
+        socket.send(JSON.stringify(bindPayload));
         startHeartbeat();
       };
 

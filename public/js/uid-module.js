@@ -1,5 +1,9 @@
 (function initUIDModule(global) {
   function initID(state, updateUIDDisplay) {
+    if (state.identityType === 'permanent' && state.myId) {
+      updateUIDDisplay();
+      return;
+    }
     const id = localStorage.getItem('uid');
     const exp = Number(localStorage.getItem('exp')) || 0;
     const now = Date.now();
@@ -20,7 +24,10 @@
     let statusText = '';
     let statusColor = '#2ecc71';
 
-    if (state.uidStatus === 'expired') {
+    if (state.identityType === 'permanent') {
+      statusText = '永久账号';
+      statusColor = '#2563eb';
+    } else if (state.uidStatus === 'expired') {
       statusText = '❌ 已过期，请刷新页面';
       statusColor = '#e74c3c';
     } else if (state.uidStatus === 'about_to_expire') {
@@ -53,6 +60,7 @@
   }
 
   function startUIDStatusUpdater(state, updateUIDDisplay) {
+    if (state.identityType === 'permanent') return;
     setInterval(() => {
       if (state.uidTTL > 0) {
         state.uidTTL -= 1000;

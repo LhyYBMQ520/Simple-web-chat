@@ -7,6 +7,7 @@ import { getIceServers, hasTurnServers } from './src/config/webrtc-config.js';
 import { createUIDService } from './src/services/uid-service.js';
 import { createSessionDBService } from './src/services/session-db-service.js';
 import { createStorageService } from './src/services/storage-service.js';
+import { createAccountService } from './src/services/account-service.js';
 import { createConnectionHandler, type ClientInfo } from './src/ws/connection-handler.js';
 
 const app = express();
@@ -37,6 +38,7 @@ const clients = new Map<string, ClientInfo>();
 const uidService = createUIDService();
 const dbService = createSessionDBService();
 const storageService = createStorageService();
+const accountService = createAccountService();
 
 dbService.cleanupOrphanedDBFiles();
 
@@ -63,6 +65,31 @@ app.get('/api/download', async (req, res) => {
     console.error('[下载签名] 失败:', (err as Error).message);
     res.status(500).json({ error: '生成下载链接失败' });
   }
+});
+
+app.post('/api/account/challenge', (req, res) => {
+  const publicKey = typeof req.body?.publicKey === 'string' ? req.body.publicKey : '';
+  if (!/^[A-Za-z0-9_-]{80,1200}$/.test(publicKey)) {
+    res.status(400).json({ error: '公钥格式无效' });
+    return;
+  }
+  res.json(accountService.createChallenge(publicKey));
+});
+
+app.post('/api/account/verify', (req, res) => {
+  const publicKey = typeof req.body?.publicKey === 'string' ? req.body.publicKey : '';
+  const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId : '';
+  const signature = typeof req.body?.signature === 'string' ? req.body.signature : '';
+  if (!publicKey || !challengeId || !signature) {
+    res.status(400).json({ error: '认证参数不完整' });
+    return;
+  }
+  const result = accountService.verifyChallenge(publicKey, challengeId, signature);
+  if (!result) {
+    res.status(401).json({ error: '账号签名验证失败' });
+    return;
+  }
+  res.json({ success: true, ...result });
 });
 
 app.post('/api/upload/presign', async (req, res) => {
@@ -124,7 +151,8 @@ wss.on('connection', createConnectionHandler({
   broadcastOnline,
   uidService,
   dbService,
-  storageService
+  storageService,
+  accountService
 }));
 
 const cleanupTimer = setInterval(() => {
@@ -150,6 +178,7 @@ server.listen(PORT, () => {
 function closeResources(): void {
   clearInterval(cleanupTimer);
   dbService.closeAllSessionDBs();
+  accountService.close();
 }
 
 process.on('exit', () => {

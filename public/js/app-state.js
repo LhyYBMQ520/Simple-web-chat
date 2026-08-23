@@ -16,6 +16,8 @@
   function createInitialState() {
     return {
       myId: null,
+      identityType: localStorage.getItem('chatIdentityMode') === 'permanent' ? 'permanent' : 'guest',
+      accountSessionToken: sessionStorage.getItem('chatAccountSessionToken') || '',
       ws: null,
       current: null,
       sessions: JSON.parse(localStorage.getItem('sessions') || '[]'),

@@ -3,6 +3,7 @@ import type { IncomingMessage } from 'node:http';
 import type { UIDService } from '../services/uid-service.js';
 import type { SessionDBService } from '../services/session-db-service.js';
 import type { StorageService } from '../services/storage-service.js';
+import type { AccountService } from '../services/account-service.js';
 import {
   handleCallRequest,
   handleCallAccept,
@@ -21,6 +22,8 @@ export interface ClientInfo {
   status: string;
   expiresAt: number | null;
   activeChat: string | null;
+  identityType: 'guest' | 'permanent';
+  accountId?: string;
 }
 
 export interface ConnectionHandlerDeps {
@@ -29,11 +32,12 @@ export interface ConnectionHandlerDeps {
   uidService: UIDService;
   dbService: SessionDBService;
   storageService: StorageService;
+  accountService: AccountService;
 }
 
 type WSMessage =
   | { type: 'ping'; clientTime?: unknown }
-  | { type: 'bind'; uid: string }
+  | { type: 'bind'; uid: string; authToken?: string }
   | { type: 'request'; to: string }
   | { type: 'accept'; from: string }
   | { type: 'getHistory'; with: string }
@@ -52,7 +56,7 @@ type WSMessage =
   | { type: 'callAnswer'; to: string; sdp: unknown }
   | { type: 'iceCandidate'; to: string; candidate: unknown };
 
-export function createConnectionHandler({ clients, broadcastOnline, uidService, dbService, storageService }: ConnectionHandlerDeps) {
+export function createConnectionHandler({ clients, broadcastOnline, uidService, dbService, storageService, accountService }: ConnectionHandlerDeps) {
   return (ws: WebSocket, req: IncomingMessage): void => {
     let uid: string | undefined;
 
@@ -76,6 +80,17 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
 
         if (msg.type === 'bind') {
           uid = msg.uid;
+          const isPermanent = uid.startsWith('p_');
+          if (isPermanent) {
+            if (!msg.authToken || !accountService.verifySession(msg.authToken, uid)) {
+              ws.send(JSON.stringify({ type: 'bindResult', success: false, reason: 'account_auth_failed', message: '永久账号认证已失效，请重新登录' }));
+              return;
+            }
+            clients.set(uid, { ws, status: 'permanent', expiresAt: null, activeChat: null, identityType: 'permanent', accountId: uid });
+            ws.send(JSON.stringify({ type: 'bindResult', success: true, ttl: null, status: 'permanent', identityType: 'permanent' }));
+            broadcastOnline();
+            return;
+          }
           const uidStatus = uidService.registerUID(uid);
 
           if (!uidStatus.valid) {
@@ -94,18 +109,36 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             ws,
             status: uidStatus.status,
             expiresAt: uidInfo ? uidInfo.expiresAt : null,
-            activeChat: null
+            activeChat: null,
+            identityType: 'guest'
           });
 
           ws.send(JSON.stringify({
             type: 'bindResult',
             success: true,
             ttl: uidStatus.ttl,
-            status: uidStatus.status
+            status: uidStatus.status,
+            identityType: 'guest'
           }));
 
           console.log(`[绑定成功] UID: ${uid} | 状态: ${uidStatus.status} | 剩余: ${Math.floor(uidStatus.ttl / 1000)}秒 | IP: ${ip}`);
           broadcastOnline();
+        }
+
+        const peerId = 'to' in msg && typeof msg.to === 'string'
+          ? msg.to
+          : 'with' in msg && typeof msg.with === 'string'
+            ? msg.with
+            : 'from' in msg && typeof msg.from === 'string'
+              ? msg.from
+              : null;
+        if (uid && peerId) {
+          const selfType = uid.startsWith('p_') ? 'permanent' : 'guest';
+          const peerType = peerId.startsWith('p_') ? 'permanent' : 'guest';
+          if (peerType !== selfType) {
+            ws.send(JSON.stringify({ type: 'error', message: '不允许跨账号类型通信' }));
+            return;
+          }
         }
 
         if (msg.type === 'request') {
@@ -116,6 +149,11 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
 
           console.log(`[请求连接] ${uid} -> ${msg.to}`);
           const target = clients.get(msg.to);
+
+          if (target && target.identityType !== (uid.startsWith('p_') ? 'permanent' : 'guest')) {
+            ws.send(JSON.stringify({ type: 'error', message: '游客账号只能连接游客账号，永久账号只能连接永久账号' }));
+            return;
+          }
 
           if (target && !uidService.isUIDExpired(msg.to) && target.ws.readyState === WebSocket.OPEN) {
             target.ws.send(JSON.stringify({ type: 'request', from: uid }));
@@ -132,6 +170,11 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
 
           console.log(`[同意连接] ${uid} <-> ${msg.from}`);
           const target = clients.get(msg.from);
+
+          if (target && target.identityType !== (uid.startsWith('p_') ? 'permanent' : 'guest')) {
+            ws.send(JSON.stringify({ type: 'error', message: '不允许跨账号类型建立会话' }));
+            return;
+          }
 
           if (target && !uidService.isUIDExpired(msg.from) && target.ws.readyState === WebSocket.OPEN) {
             target.ws.send(JSON.stringify({ type: 'accepted', from: uid }));

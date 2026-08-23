@@ -20,6 +20,10 @@ const PROJECT_ROOT = findProjectRoot(__dirname);
 export const UID_LIFETIME = 24 * 60 * 60 * 1000;
 export const PORT = 21451;
 export const DB_DIR = path.join(PROJECT_ROOT, 'db');
+export const GUEST_CHAT_DB_DIR = path.join(DB_DIR, 'guest-chats');
+export const ACCOUNT_CHAT_DB_DIR = path.join(DB_DIR, 'account-chats');
+export const ACCOUNT_DB_DIR = path.join(DB_DIR, 'accounts');
+export const SESSION_DB_DIR = path.join(DB_DIR, 'sessions');
 export const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
 
 export const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'r2';

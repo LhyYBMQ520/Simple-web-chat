@@ -15,6 +15,59 @@ body {
   background: #f8fafc;
 }
 
+.identity-mode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.identity-mode-dialog {
+  width: min(420px, 100%);
+  padding: 24px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+}
+
+.identity-mode-dialog h2 {
+  margin-bottom: 10px;
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.identity-mode-dialog p {
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.identity-mode-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.identity-mode-actions button {
+  flex: 1;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.identity-mode-actions button:last-child {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
 .app {
   display: flex;
   position: fixed;
@@ -170,6 +223,23 @@ body {
   align-items: center;
   gap: 8px;
   justify-content: space-between;
+}
+
+.account-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.account-actions button {
+  flex: 1;
+  min-height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .copy-btn {

@@ -48,6 +48,7 @@ export function createUIDService(): UIDService {
   }
 
   function isUIDExpired(uid: string): boolean {
+    if (uid.startsWith('p_')) return false;
     if (!uids.has(uid)) return true;
     return uids.get(uid)!.expiresAt < Date.now();
   }

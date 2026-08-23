@@ -13,6 +13,16 @@
 </head>
 
 <body>
+  <div id="identityModeOverlay" class="identity-mode-overlay" style="display:none;">
+    <div class="identity-mode-dialog">
+      <h2>选择使用模式</h2>
+      <p>游客模式保留现有 24 小时临时 ID；永久账号无需注册，可在本设备恢复使用。</p>
+      <div class="identity-mode-actions">
+        <button type="button" data-mode="guest">游客模式</button>
+        <button type="button" data-mode="permanent">创建/使用永久账号</button>
+      </div>
+    </div>
+  </div>
   <div class="app">
     <div class="sidebar">
       <div class="sidebar-header">
@@ -26,8 +36,13 @@
       </div>
       <div class="sessions" id="sessions"></div>
       <div class="sidebar-footer">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">我的ID（24H 有效期）</div>
+        <div id="identityLabel" style="display:flex;align-items:center;gap:6px;margin-bottom:4px">我的ID（24H 有效期）</div>
         <div id="myId"></div>
+        <div class="account-actions">
+          <button id="exportAccountBtn" type="button" title="导出永久账号凭据"><i class="fa-solid fa-download"></i> 导出凭据</button>
+          <button id="importAccountBtn" type="button" title="导入永久账号凭据"><i class="fa-solid fa-upload"></i> 导入凭据</button>
+          <input id="accountCredentialInput" type="file" accept="application/json" hidden>
+        </div>
         <input id="targetId" placeholder="输入对方ID">
         <button id="sendRequestBtn">
           <i class="fa-solid fa-paper-plane"></i> 发送请求
@@ -124,6 +139,7 @@
 
   <script src="js/config.js"></script>
   <script src="js/app-state.js"></script>
+  <script src="js/account-module.js"></script>
   <script src="js/android-screen-source-module.js"></script>
   <script src="js/webrtc-module.js"></script>
   <script src="js/webrtc-ui-module.js"></script>

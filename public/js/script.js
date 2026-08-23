@@ -1,6 +1,7 @@
 ﻿(function bootstrapChatApp(global) {
   const appStateModule = global.ChatAppState;
   const uidModule = global.ChatUIDModule;
+  const accountModule = global.ChatAccountModule;
   const messageModuleFactory = global.ChatMessageModule;
   const sessionModuleFactory = global.ChatSessionModule;
   const wsModuleFactory = global.ChatWsModule;
@@ -10,7 +11,7 @@
   const webrtcModuleFactory = global.ChatWebRTCModule;
   const webrtcUIModuleFactory = global.ChatWebRTCUIModule;
 
-  if (!appStateModule || !uidModule || !messageModuleFactory || !sessionModuleFactory || !wsModuleFactory || !fileUploadModuleFactory || !emojiDataModule || !emojiModuleFactory) {
+  if (!appStateModule || !uidModule || !accountModule || !messageModuleFactory || !sessionModuleFactory || !wsModuleFactory || !fileUploadModuleFactory || !emojiDataModule || !emojiModuleFactory) {
     throw new Error('聊天模块加载失败，请检查 js 文件加载顺序');
   }
 
@@ -721,14 +722,34 @@
     bar.querySelector('.quote-preview-close').onclick = clearQuoteState;
   }
 
-  window.onload = () => {
+  window.onload = async () => {
     updateConnectionStatusUI();
+    try {
+      await accountModule.initialize(state);
+    } catch (err) {
+      alert('永久账号初始化失败，将切换为游客模式。');
+      localStorage.setItem('chatIdentityMode', 'guest');
+      state.identityType = 'guest';
+    }
     uidModule.initID(state, () => uidModule.updateUIDDisplay(state));
     uidModule.startUIDStatusUpdater(state, () => uidModule.updateUIDDisplay(state));
+    const identityLabel = document.getElementById('identityLabel');
+    if (identityLabel) identityLabel.textContent = state.identityType === 'permanent' ? '我的永久账号 ID' : '我的游客 ID（24H 有效期）';
     wsModule.connect();
     render();
 
     document.getElementById('sendRequestBtn').onclick = sendRequest;
+    document.getElementById('exportAccountBtn').onclick = async () => {
+      if (state.identityType !== 'permanent') return alert('游客模式没有永久账号凭据');
+      try { await accountModule.exportCredential(); } catch (err) { alert('导出凭据失败'); }
+    };
+    document.getElementById('importAccountBtn').onclick = () => document.getElementById('accountCredentialInput').click();
+    document.getElementById('accountCredentialInput').onchange = async event => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try { await accountModule.importCredential(file); } catch (err) { alert('导入凭据失败，请选择有效的账号文件'); }
+      event.target.value = '';
+    };
 
     // Wire call overlay control buttons
     var callMuteBtn = document.getElementById('callMuteBtn');

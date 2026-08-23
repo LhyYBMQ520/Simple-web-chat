@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
-import { DB_DIR, UID_LIFETIME } from '../config/constants.js';
+import { ACCOUNT_CHAT_DB_DIR, DB_DIR, GUEST_CHAT_DB_DIR, UID_LIFETIME } from '../config/constants.js';
 
 export interface MessageRow {
   id: number;
@@ -58,15 +58,28 @@ export function createSessionDBService(): SessionDBService {
   const sessionDBCache = new Map<string, Database.Database>();
 
   function ensureDBDirExists(): void {
-    if (!fs.existsSync(DB_DIR)) {
-      fs.mkdirSync(DB_DIR, { recursive: true });
-      console.log('[初始化] 创建数据库目录:', DB_DIR);
+    for (const dir of [DB_DIR, GUEST_CHAT_DB_DIR, ACCOUNT_CHAT_DB_DIR]) {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    }
+
+    // 旧版本把游客会话直接存放在 db 根目录，启动时迁移到分类目录。
+    for (const file of fs.readdirSync(DB_DIR)) {
+      if (!file.endsWith('.db')) continue;
+      const oldPath = path.join(DB_DIR, file);
+      const newPath = path.join(GUEST_CHAT_DB_DIR, file);
+      if (!fs.existsSync(newPath)) {
+        fs.renameSync(oldPath, newPath);
+        console.log('[迁移] 游客会话数据库:', file);
+      }
     }
   }
 
   function getSessionDBPath(uid1: string, uid2: string): string {
     const [smaller, larger] = [uid1, uid2].sort();
-    return path.join(DB_DIR, `${smaller},${larger}.db`);
+    const directory = uid1.startsWith('p_') && uid2.startsWith('p_')
+      ? ACCOUNT_CHAT_DB_DIR
+      : GUEST_CHAT_DB_DIR;
+    return path.join(directory, `${smaller},${larger}.db`);
   }
 
   function getSessionDB(uid1: string, uid2: string): Database.Database {
@@ -146,8 +159,8 @@ export function createSessionDBService(): SessionDBService {
       return;
     }
 
-    const files = fs.readdirSync(DB_DIR);
-    console.log(`[清理] 开始清理 UID: ${targetUID} 的数据库, 当前 db 目录有 ${files.length} 个文件`);
+    const files = fs.existsSync(GUEST_CHAT_DB_DIR) ? fs.readdirSync(GUEST_CHAT_DB_DIR) : [];
+    console.log(`[清理] 开始清理 UID: ${targetUID} 的游客数据库, 当前文件有 ${files.length} 个`);
 
     files.forEach(file => {
       if (!file.endsWith('.db')) return;
@@ -159,7 +172,7 @@ export function createSessionDBService(): SessionDBService {
         console.log(`[清理] 找到需要删除的数据库文件: ${file}`);
         closeSessionDB(uid1, uid2);
 
-        const filePath = path.join(DB_DIR, file);
+        const filePath = path.join(GUEST_CHAT_DB_DIR, file);
 
         const tryDelete = (attempts = 5, delay = 100): void => {
           setTimeout(() => {
@@ -262,16 +275,16 @@ export function createSessionDBService(): SessionDBService {
   }
 
   function cleanupOrphanedDBFiles(): void {
-    if (!fs.existsSync(DB_DIR)) return;
+    if (!fs.existsSync(GUEST_CHAT_DB_DIR)) return;
 
-    const files = fs.readdirSync(DB_DIR);
+    const files = fs.readdirSync(GUEST_CHAT_DB_DIR);
     const now = Date.now();
     let deletedCount = 0;
 
     files.forEach(file => {
       if (!file.endsWith('.db')) return;
 
-      const filePath = path.join(DB_DIR, file);
+      const filePath = path.join(GUEST_CHAT_DB_DIR, file);
       try {
         const stat = fs.statSync(filePath);
         const fileAgeMs = stat.birthtimeMs || stat.ctimeMs;
