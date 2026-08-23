@@ -735,6 +735,13 @@
     uidModule.startUIDStatusUpdater(state, () => uidModule.updateUIDDisplay(state));
     const identityLabel = document.getElementById('identityLabel');
     if (identityLabel) identityLabel.textContent = state.identityType === 'permanent' ? '我的永久账号 ID' : '我的游客 ID（24H 有效期）';
+    const switchIdentityModeBtn = document.getElementById('switchIdentityModeBtn');
+    if (switchIdentityModeBtn) {
+      switchIdentityModeBtn.innerHTML = state.identityType === 'permanent'
+        ? '<i class="fa-solid fa-user-clock"></i> 切换到游客模式'
+        : '<i class="fa-solid fa-key"></i> 切换到永久账号';
+      switchIdentityModeBtn.onclick = () => accountModule.switchMode(state);
+    }
     wsModule.connect();
     render();
 

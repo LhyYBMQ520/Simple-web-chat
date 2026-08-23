@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,interactive-widget=resizes-content">
   <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 64x64 128x128" type="image/x-icon">
-  <link rel="stylesheet" type="text/css" href="fontawesome-free-7.2.0-web/css/all.min.css">
+  <link rel="stylesheet" type="text/css" href="fontawesome-free-7.2.0-web/css/all.min.css?v=202608240324">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=202608240324">
   <title>L Chat</title>
 </head>
 
@@ -20,6 +20,16 @@
       <div class="identity-mode-actions">
         <button type="button" data-mode="guest">游客模式</button>
         <button type="button" data-mode="permanent">创建/使用永久账号</button>
+      </div>
+    </div>
+  </div>
+  <div id="identitySwitchConfirmOverlay" class="identity-mode-overlay" style="display:none;">
+    <div class="identity-mode-dialog">
+      <h2>确认切换账号模式</h2>
+      <p id="identitySwitchConfirmText">切换模式后将清理当前模式的会话列表和备注，确定继续吗？</p>
+      <div class="identity-mode-actions">
+        <button id="identitySwitchCancelBtn" type="button">取消</button>
+        <button id="identitySwitchConfirmBtn" type="button">确认切换</button>
       </div>
     </div>
   </div>
@@ -43,6 +53,7 @@
           <button id="importAccountBtn" type="button" title="导入永久账号凭据"><i class="fa-solid fa-upload"></i> 导入凭据</button>
           <input id="accountCredentialInput" type="file" accept="application/json" hidden>
         </div>
+        <button id="switchIdentityModeBtn" class="switch-identity-btn" type="button"></button>
         <input id="targetId" placeholder="输入对方ID">
         <button id="sendRequestBtn">
           <i class="fa-solid fa-paper-plane"></i> 发送请求
@@ -137,19 +148,19 @@
   <!-- 来电提示 -->
   <div id="callIncomingPrompt" class="call-incoming-prompt" style="display:none;"></div>
 
-  <script src="js/config.js"></script>
-  <script src="js/app-state.js"></script>
-  <script src="js/account-module.js"></script>
-  <script src="js/android-screen-source-module.js"></script>
-  <script src="js/webrtc-module.js"></script>
-  <script src="js/webrtc-ui-module.js"></script>
-  <script src="js/uid-module.js"></script>
-  <script src="js/message-module.js"></script>
-  <script src="js/session-module.js"></script>
-  <script src="js/ws-module.js"></script>
-  <script src="js/file-upload-module.js"></script>
-  <script src="js/emoji-data.js"></script>
-  <script src="js/emoji-module.js"></script>
-  <script src="js/script.js"></script>
+  <script src="js/config.js?v=202608240324"></script>
+  <script src="js/app-state.js?v=202608240324"></script>
+  <script src="js/account-module.js?v=202608240324"></script>
+  <script src="js/android-screen-source-module.js?v=202608240324"></script>
+  <script src="js/webrtc-module.js?v=202608240324"></script>
+  <script src="js/webrtc-ui-module.js?v=202608240324"></script>
+  <script src="js/uid-module.js?v=202608240324"></script>
+  <script src="js/message-module.js?v=202608240324"></script>
+  <script src="js/session-module.js?v=202608240324"></script>
+  <script src="js/ws-module.js?v=202608240324"></script>
+  <script src="js/file-upload-module.js?v=202608240324"></script>
+  <script src="js/emoji-data.js?v=202608240324"></script>
+  <script src="js/emoji-module.js?v=202608240324"></script>
+  <script src="js/script.js?v=202608240324"></script>
 </body>
 </html>

@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'node:http';
+import path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import { PORT, PUBLIC_DIR, MAX_FILE_SIZE } from './src/config/constants.js';
@@ -30,6 +31,13 @@ app.get('/js/config.js', (_req, res) => {
     `  webrtc: { iceServers: ${JSON.stringify(iceServers)}, turnConfigured: ${hasTurnServers()} }` +
     `};`
   );
+});
+
+app.get('/', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 app.use(express.static(PUBLIC_DIR));

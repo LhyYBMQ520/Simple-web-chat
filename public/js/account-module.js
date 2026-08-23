@@ -103,6 +103,36 @@
     location.reload();
   }
 
+  function switchMode(state) {
+    const overlay = document.getElementById('identitySwitchConfirmOverlay');
+    const confirmButton = document.getElementById('identitySwitchConfirmBtn');
+    const cancelButton = document.getElementById('identitySwitchCancelBtn');
+    if (!overlay || !confirmButton || !cancelButton) return;
+    const targetMode = state.identityType === 'permanent' ? 'guest' : 'permanent';
+    const text = document.getElementById('identitySwitchConfirmText');
+    if (text) text.textContent = targetMode === 'permanent'
+      ? '切换到永久账号后将清理当前游客模式的会话列表和备注，确定继续吗？'
+      : '切换到游客模式后将清理当前永久账号模式的会话列表和备注，确定继续吗？';
+    overlay.style.display = 'flex';
+    cancelButton.onclick = () => { overlay.style.display = 'none'; };
+    confirmButton.onclick = () => {
+      overlay.style.display = 'none';
+      completeModeSwitch(state);
+    };
+  }
+
+  function completeModeSwitch(state) {
+    localStorage.removeItem('sessions');
+    localStorage.removeItem('remarks');
+    if (state.identityType === 'permanent') {
+      localStorage.setItem('chatIdentityMode', 'guest');
+      sessionStorage.removeItem('chatAccountSessionToken');
+    } else {
+      localStorage.setItem('chatIdentityMode', 'permanent');
+    }
+    location.reload();
+  }
+
   function chooseMode() {
     const saved = localStorage.getItem('chatIdentityMode');
     if (saved === 'guest' || saved === 'permanent') return Promise.resolve(saved);
@@ -116,6 +146,12 @@
 
   async function initialize(state) {
     const mode = await chooseMode();
+    const previousMode = localStorage.getItem('chatLastIdentityMode');
+    if (previousMode && previousMode !== mode) {
+      localStorage.removeItem('sessions');
+      localStorage.removeItem('remarks');
+    }
+    localStorage.setItem('chatLastIdentityMode', mode);
     if (mode === 'permanent') {
       const account = await authenticate();
       state.identityType = 'permanent';
@@ -127,5 +163,5 @@
     localStorage.setItem('chatIdentityMode', 'guest');
   }
 
-  global.ChatAccountModule = { initialize, exportCredential, importCredential };
+  global.ChatAccountModule = { initialize, exportCredential, importCredential, switchMode };
 })(window);
