@@ -815,10 +815,6 @@
           details.push('视频 ' + formatBitrate(qualityStats.videoKbps));
         }
         if (typeof qualityStats.audioKbps === 'number') details.push('音频 ' + formatBitrate(qualityStats.audioKbps));
-        if (qualityStats.limitationReason) {
-          var limitationLabels = { cpu: 'CPU 限制', bandwidth: '带宽限制', other: '系统限制' };
-          details.push(limitationLabels[qualityStats.limitationReason] || ('质量限制 ' + qualityStats.limitationReason));
-        }
         details.push(typeof qualityStats.lossPercent === 'number'
           ? '丢包 ' + qualityStats.lossPercent + '%'
           : '丢包 --');

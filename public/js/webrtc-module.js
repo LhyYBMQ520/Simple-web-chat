@@ -1363,18 +1363,17 @@
         height: null,
         fps: null,
         lossPercent: null,
-        jitterMs: null,
-        limitationReason: null
+        jitterMs: null
       };
       var outbound = {
         audioBitsPerSecond: 0, videoBitsPerSecond: 0,
         hasAudioBitrate: false, hasVideoBitrate: false, hasVideo: false,
-        width: null, height: null, fps: null, jitterMs: null, limitationReason: null
+        width: null, height: null, fps: null, jitterMs: null
       };
       var inbound = {
         audioBitsPerSecond: 0, videoBitsPerSecond: 0,
         hasAudioBitrate: false, hasVideoBitrate: false, hasVideo: false,
-        width: null, height: null, fps: null, jitterMs: null, limitationReason: null
+        width: null, height: null, fps: null, jitterMs: null
       };
 
       function collectRtpMedia(stat, direction, target) {
@@ -1421,9 +1420,6 @@
           if (typeof stat.frameWidth === 'number') target.width = Math.max(target.width || 0, stat.frameWidth);
           if (typeof stat.frameHeight === 'number') target.height = Math.max(target.height || 0, stat.frameHeight);
           if (typeof stat.framesPerSecond === 'number') target.fps = Math.max(target.fps || 0, stat.framesPerSecond);
-          if (typeof stat.qualityLimitationReason === 'string' && stat.qualityLimitationReason !== 'none') {
-            target.limitationReason = stat.qualityLimitationReason;
-          }
         }
         if (typeof stat.jitter === 'number') {
           target.jitterMs = Math.max(target.jitterMs || 0, stat.jitter * 1000);
@@ -1449,7 +1445,6 @@
       quality.width = videoStats.width;
       quality.height = videoStats.height;
       quality.fps = videoStats.fps;
-      quality.limitationReason = videoStats.limitationReason;
       if (videoStats.hasVideoBitrate) quality.videoKbps = Math.round(videoStats.videoBitsPerSecond / 1000);
       if (audioStats.hasAudioBitrate) quality.audioKbps = Math.round(audioStats.audioBitsPerSecond / 1000);
       if (quality.fps !== null) quality.fps = Math.round(quality.fps);

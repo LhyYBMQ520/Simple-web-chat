@@ -53,13 +53,18 @@
             </summary>
             <div class="call-menu-panel" role="menu" aria-label="通话方式">
               <div class="call-menu-quality">
-                <label for="callQualitySelect"><i class="fa-solid fa-sliders"></i> 通话质量</label>
-                <select id="callQualitySelect" onchange="setCallQuality(this.value)" ${isInCall ? 'disabled' : ''}>
-                  <option value="auto" ${qualityProfile === 'auto' ? 'selected' : ''}>自动</option>
-                  <option value="low" ${qualityProfile === 'low' ? 'selected' : ''}>省流</option>
-                  <option value="standard" ${qualityProfile === 'standard' ? 'selected' : ''}>标准</option>
-                  <option value="high" ${qualityProfile === 'high' ? 'selected' : ''}>高清</option>
-                </select>
+                <span class="call-menu-quality-label"><i class="fa-solid fa-sliders"></i> 通话质量</span>
+                <details class="call-quality-picker ${isInCall ? 'locked' : ''}">
+                  <summary class="call-quality-picker-trigger" aria-label="选择通话质量" aria-disabled="${isInCall ? 'true' : 'false'}" onclick="if (this.parentElement.classList.contains('locked')) event.preventDefault()">
+                    <span>${qualityProfile === 'low' ? '省流' : qualityProfile === 'standard' ? '标准' : qualityProfile === 'high' ? '高清' : '自动'}</span><i class="fa-solid fa-chevron-down"></i>
+                  </summary>
+                  <div class="call-quality-picker-menu" role="menu">
+                    <button type="button" role="menuitem" class="${qualityProfile === 'auto' ? 'active' : ''}" onclick="setCallQuality('auto')">自动</button>
+                    <button type="button" role="menuitem" class="${qualityProfile === 'low' ? 'active' : ''}" onclick="setCallQuality('low')">省流</button>
+                    <button type="button" role="menuitem" class="${qualityProfile === 'standard' ? 'active' : ''}" onclick="setCallQuality('standard')">标准</button>
+                    <button type="button" role="menuitem" class="${qualityProfile === 'high' ? 'active' : ''}" onclick="setCallQuality('high')">高清</button>
+                  </div>
+                </details>
               </div>
               <div class="call-menu-audio-settings">
                 <span class="call-menu-section-title"><i class="fa-solid fa-microphone-lines"></i> 麦克风处理</span>

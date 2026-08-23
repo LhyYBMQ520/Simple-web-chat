@@ -199,6 +199,9 @@
       el.querySelector('.msg-file-card')?.remove();
       el.querySelector('.msg-actions')?.remove();
       el.querySelector('.msg-quote')?.remove();
+      // Recreate metadata after message content so read-state updates never
+      // move the timestamp above the text in the flex column.
+      el.querySelector('.msg-meta')?.remove();
 
       const isRecalled = message.status === messageStatus.RECALLED;
 

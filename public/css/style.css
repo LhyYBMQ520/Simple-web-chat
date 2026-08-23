@@ -1392,7 +1392,7 @@ button:hover {
   gap: 8px;
 }
 
-.call-menu-quality label {
+.call-menu-quality-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1402,28 +1402,78 @@ button:hover {
   white-space: nowrap;
 }
 
-.call-menu-quality label i {
+.call-menu-quality-label i {
   color: #3b82f6;
 }
 
-.call-menu-quality select {
-  min-width: 58px;
+.call-quality-picker {
+  position: relative;
+  min-width: 64px;
+}
+
+.call-quality-picker-trigger {
   height: 28px;
-  padding: 0 5px;
+  padding: 0 7px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   background: #fff;
   color: #334155;
   font-size: 12px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  list-style: none;
 }
 
-.call-menu-quality select:focus {
+.call-quality-picker-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.call-quality-picker-trigger:hover,
+.call-quality-picker[open] .call-quality-picker-trigger {
   border-color: #60a5fa;
-  outline: 2px solid #bfdbfe;
+  background: #eff6ff;
 }
 
-.call-menu-quality select:disabled {
+.call-quality-picker-trigger i {
+  color: #64748b;
+  font-size: 9px;
+}
+
+.call-quality-picker-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 5px);
+  z-index: 3;
+  min-width: 76px;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+}
+
+.call-quality-picker-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: #475569;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.call-quality-picker-menu button:hover,
+.call-quality-picker-menu button.active {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.call-quality-picker.locked .call-quality-picker-trigger {
   opacity: 0.55;
   cursor: not-allowed;
 }
