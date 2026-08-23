@@ -33,6 +33,17 @@
       </div>
     </div>
   </div>
+  <div id="permanentAccountChoiceOverlay" class="identity-mode-overlay" style="display:none;">
+    <div class="identity-mode-dialog">
+      <h2>永久账号</h2>
+      <p>如果你已有导出的账号凭据，请选择恢复，避免重复创建永久账号。</p>
+      <div class="identity-mode-actions">
+        <button id="createPermanentAccountBtn" type="button">创建新账号</button>
+        <button id="restorePermanentAccountBtn" type="button">使用凭据恢复</button>
+      </div>
+      <input id="permanentCredentialInput" type="file" accept="application/json" hidden>
+    </div>
+  </div>
   <div class="app">
     <div class="sidebar">
       <div class="sidebar-header">
@@ -150,7 +161,7 @@
 
   <script src="js/config.js?v=202608240324"></script>
   <script src="js/app-state.js?v=202608240324"></script>
-  <script src="js/account-module.js?v=202608240324"></script>
+  <script src="js/account-module.js?v=202608240339"></script>
   <script src="js/android-screen-source-module.js?v=202608240324"></script>
   <script src="js/webrtc-module.js?v=202608240324"></script>
   <script src="js/webrtc-ui-module.js?v=202608240324"></script>

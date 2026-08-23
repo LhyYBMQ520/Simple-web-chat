@@ -84,7 +84,7 @@
     URL.revokeObjectURL(link.href);
   }
 
-  async function importCredential(file) {
+  async function importCredential(file, shouldReload = true) {
     const data = JSON.parse(await file.text());
     if (data.version !== 2 || data.algorithm !== 'AES-GCM') throw new Error('账号凭据格式无效');
     const password = prompt('请输入账号凭据导入密码');
@@ -100,7 +100,8 @@
     localStorage.setItem('chatIdentityMode', 'permanent');
     localStorage.setItem('chatAccountId', credential.accountId || '');
     localStorage.setItem('chatAccountPublicKey', credential.publicKey);
-    location.reload();
+    if (shouldReload) location.reload();
+    return credential;
   }
 
   function switchMode(state) {
@@ -140,7 +141,43 @@
       const overlay = document.getElementById('identityModeOverlay');
       overlay.style.display = 'flex';
       overlay.querySelector('[data-mode="guest"]').onclick = () => { localStorage.setItem('chatIdentityMode', 'guest'); overlay.style.display = 'none'; resolve('guest'); };
-      overlay.querySelector('[data-mode="permanent"]').onclick = () => { overlay.style.display = 'none'; resolve('permanent'); };
+      overlay.querySelector('[data-mode="permanent"]').onclick = async () => {
+        overlay.style.display = 'none';
+        resolve('permanent');
+      };
+    });
+  }
+
+  async function deleteKey(name) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const request = db.transaction(STORE, 'readwrite').objectStore(STORE).delete(name);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function choosePermanentAccount() {
+    return new Promise(resolve => {
+      const overlay = document.getElementById('permanentAccountChoiceOverlay');
+      const createButton = document.getElementById('createPermanentAccountBtn');
+      const restoreButton = document.getElementById('restorePermanentAccountBtn');
+      const input = document.getElementById('permanentCredentialInput');
+      overlay.style.display = 'flex';
+      createButton.onclick = () => { overlay.style.display = 'none'; resolve(null); };
+      restoreButton.onclick = () => input.click();
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        input.value = '';
+        if (!file) return;
+        try {
+          const credential = await importCredential(file, false);
+          overlay.style.display = 'none';
+          resolve(credential);
+        } catch (err) {
+          alert('凭据恢复失败，请检查文件和密码。');
+        }
+      };
     });
   }
 
@@ -153,6 +190,10 @@
     }
     localStorage.setItem('chatLastIdentityMode', mode);
     if (mode === 'permanent') {
+      if (!await readKey('keyPair') || previousMode !== 'permanent') {
+        const restored = await choosePermanentAccount();
+        if (!restored) await deleteKey('keyPair');
+      }
       const account = await authenticate();
       state.identityType = 'permanent';
       state.myId = account.accountId;
