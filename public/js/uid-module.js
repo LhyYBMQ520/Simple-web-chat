@@ -43,8 +43,8 @@
     }
 
     element.innerHTML = `
-      <span>${state.myId}</span>
-      <span style="
+      <span class="identity-value" title="${state.myId}">${state.myId}</span>
+      <span class="identity-status" style="
         display: inline-block;
         background: ${statusColor};
         color: white;
