@@ -10,14 +10,26 @@
       isTurnConfigured
     } = options;
 
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function getPeerLabel(id) {
+      const profile = state.accountProfiles && state.accountProfiles[id];
+      return profile && profile.displayName ? profile.displayName : id;
+    }
+
+    function getDisplayName(id) {
+      const label = getPeerLabel(id);
+      return state.remarks[id] ? `(${escapeHtml(state.remarks[id])}) ${escapeHtml(label)}` : escapeHtml(label);
+    }
+
     function updateChatHeader() {
       if (!state.current) return;
 
       const isOnline = state.onlineUsers.includes(state.current);
       const dotColor = isOnline ? '#2ecc71' : '#e74c3c';
-      const displayName = state.remarks[state.current]
-        ? `(${state.remarks[state.current]}) ${state.current}`
-        : state.current;
+      const displayName = getDisplayName(state.current);
 
       const isInCall = state.webrtc && state.webrtc.callState !== 'idle';
       const turnAvailable = typeof isTurnConfigured === 'function' && isTurnConfigured();
@@ -106,7 +118,7 @@
       const html = state.sessions.map(i => {
         const isOnline = state.onlineUsers.includes(i);
         const dotColor = isOnline ? '#2ecc71' : '#e74c3c';
-        const displayName = state.remarks[i] ? `(${state.remarks[i]}) ${i}` : i;
+        const displayName = getDisplayName(i);
         const hasUnread = state.unreadCount[i] && state.unreadCount[i] > 0;
 
         return `

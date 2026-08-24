@@ -275,6 +275,27 @@ body {
   cursor: pointer;
 }
 
+#permanentProfileActions {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#accountDisplayNameInput {
+  flex: 1 1 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+#permanentProfileActions button {
+  flex: 1 1 auto;
+}
+
 .switch-identity-btn {
   width: 100%;
   min-height: 30px;

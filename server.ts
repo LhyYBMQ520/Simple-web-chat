@@ -100,6 +100,42 @@ app.post('/api/account/verify', (req, res) => {
   res.json({ success: true, ...result });
 });
 
+app.post('/api/account/profile', (req, res) => {
+  const accountId = typeof req.body?.accountId === 'string' ? req.body.accountId : '';
+  const authToken = typeof req.body?.authToken === 'string' ? req.body.authToken : '';
+  if (!/^p_[a-f0-9]{24}$/.test(accountId) || !authToken || accountService.getSessionAccountId(authToken) !== accountId) {
+    res.status(401).json({ error: '永久账号认证已失效' });
+    return;
+  }
+
+  if (req.body?.displayName !== undefined) {
+    const displayName = req.body.displayName === null ? null : String(req.body.displayName).trim();
+    if (displayName !== null && (displayName.length < 1 || displayName.length > 20)) {
+      res.status(400).json({ error: '昵称长度必须为 1-20 个字符' });
+      return;
+    }
+    if (!accountService.updateDisplayName(accountId, displayName)) {
+      res.status(404).json({ error: '账号不存在' });
+      return;
+    }
+    const updatedProfile = accountService.getAccount(accountId);
+    if (updatedProfile) {
+      for (const client of clients.values()) {
+        if (client.identityType === 'permanent' && client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({ type: 'profile', profile: updatedProfile }));
+        }
+      }
+    }
+  }
+
+  const profile = accountService.getAccount(accountId);
+  if (!profile) {
+    res.status(404).json({ error: '账号不存在' });
+    return;
+  }
+  res.json(profile);
+});
+
 app.post('/api/upload/presign', async (req, res) => {
   try {
     if (!storageService.isConfigured()) {

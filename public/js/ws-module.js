@@ -230,6 +230,11 @@
           return;
         }
 
+        if (d.type === 'profile') {
+          if (typeof handlers.onProfile === 'function') handlers.onProfile(d.profile);
+          return;
+        }
+
         if (d.type === 'error') {
           handlers.onError(d);
           return;

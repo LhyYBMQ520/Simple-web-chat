@@ -17,7 +17,9 @@ export interface AccountService {
   createChallenge(publicKey: string): { challengeId: string; challenge: string; accountId: string; created: boolean };
   verifyChallenge(publicKey: string, challengeId: string, signature: string): { accountId: string; sessionToken: string; expiresAt: number } | null;
   verifySession(token: string, accountId: string): boolean;
+  getSessionAccountId(token: string): string | null;
   getAccount(accountId: string): { id: string; displayName: string | null } | null;
+  updateDisplayName(accountId: string, displayName: string | null): boolean;
   close(): void;
 }
 
@@ -112,10 +114,25 @@ export function createAccountService(): AccountService {
     return row || null;
   }
 
+  function getSessionAccountId(token: string): string | null {
+    if (!token) return null;
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    const row = sessionDB.prepare('SELECT account_id, expires_at FROM account_sessions WHERE token_hash=?').get(hash) as { account_id: string; expires_at: number } | undefined;
+    if (!row || row.expires_at <= Date.now()) return null;
+    return row.account_id;
+  }
+
+  function updateDisplayName(accountId: string, displayName: string | null): boolean {
+    const value = displayName === null ? null : displayName.trim();
+    if (value !== null && (value.length < 1 || value.length > 20)) return false;
+    const result = db.prepare('UPDATE accounts SET display_name=? WHERE id=? AND disabled=0').run(value, accountId);
+    return result.changes > 0;
+  }
+
   const cleanupTimer = setInterval(() => {
     sessionDB.prepare('DELETE FROM account_sessions WHERE expires_at<=?').run(Date.now());
     for (const [id, record] of challenges) if (record.expiresAt <= Date.now()) challenges.delete(id);
   }, 60 * 1000);
 
-  return { createChallenge, verifyChallenge, verifySession, getAccount, close: () => { clearInterval(cleanupTimer); db.close(); sessionDB.close(); } };
+  return { createChallenge, verifyChallenge, verifySession, getSessionAccountId, getAccount, updateDisplayName, close: () => { clearInterval(cleanupTimer); db.close(); sessionDB.close(); } };
 }

@@ -60,7 +60,36 @@
     localStorage.setItem('chatAccountId', result.accountId);
     localStorage.setItem('chatAccountPublicKey', publicKey);
     sessionStorage.setItem('chatAccountSessionToken', result.sessionToken);
-    return { accountId: result.accountId, sessionToken: result.sessionToken };
+    const profile = await getProfile(result.accountId, result.sessionToken);
+    localStorage.setItem('chatAccountDisplayName', profile.displayName || '');
+    return { accountId: result.accountId, sessionToken: result.sessionToken, displayName: profile.displayName || '' };
+  }
+
+  async function getProfile(accountId, sessionToken) {
+    const response = await fetch('/api/account/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId, authToken: sessionToken })
+    });
+    if (!response.ok) throw new Error('无法读取账号资料');
+    return response.json();
+  }
+
+  async function saveProfile(state, displayName) {
+    const value = String(displayName || '').trim();
+    if (value.length > 20) throw new Error('昵称不能超过20个字符');
+    const profile = await getProfile(state.myId, state.accountSessionToken).then(async () => {
+      const response = await fetch('/api/account/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: state.myId, authToken: state.accountSessionToken, displayName: value || null })
+      });
+      if (!response.ok) throw new Error('昵称保存失败');
+      return response.json();
+    });
+    state.accountDisplayName = profile.displayName || '';
+    localStorage.setItem('chatAccountDisplayName', state.accountDisplayName);
+    return profile;
   }
 
   async function exportCredential() {
@@ -198,11 +227,12 @@
       state.identityType = 'permanent';
       state.myId = account.accountId;
       state.accountSessionToken = account.sessionToken;
+      state.accountDisplayName = account.displayName || '';
       return;
     }
     state.identityType = 'guest';
     localStorage.setItem('chatIdentityMode', 'guest');
   }
 
-  global.ChatAccountModule = { initialize, exportCredential, importCredential, switchMode };
+  global.ChatAccountModule = { initialize, exportCredential, importCredential, switchMode, getProfile, saveProfile };
 })(window);

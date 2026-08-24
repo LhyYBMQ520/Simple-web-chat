@@ -254,6 +254,11 @@
 
     state.uidTTL = d.ttl;
     state.uidStatus = d.status;
+    if (d.profile && state.identityType === 'permanent') {
+      state.accountDisplayName = d.profile.displayName || '';
+      localStorage.setItem('chatAccountDisplayName', state.accountDisplayName);
+      updatePermanentProfileUI();
+    }
     uidModule.updateUIDDisplay(state);
     console.log(`[UID 绑定成功] 状态: ${d.status} | 剩余: ${Math.floor(d.ttl / 1000)}秒`);
     wsModule.syncActiveChatState();
@@ -264,6 +269,33 @@
     if (webrtcModule && webrtcModule.isCallActive()) {
       webrtcModule.handleSignalingReconnected();
     }
+  }
+
+  function handleProfile(profile) {
+    if (!profile || !profile.id) return;
+    state.accountProfiles[profile.id] = profile;
+    localStorage.setItem('chatAccountProfiles', JSON.stringify(state.accountProfiles));
+    if (profile.id === state.myId) {
+      state.accountDisplayName = profile.displayName || '';
+      localStorage.setItem('chatAccountDisplayName', state.accountDisplayName);
+      updatePermanentProfileUI();
+      uidModule.updateUIDDisplay(state);
+    }
+    render();
+  }
+
+  function updatePermanentProfileUI() {
+    const box = document.getElementById('permanentProfileActions');
+    const input = document.getElementById('accountDisplayNameInput');
+    const toggle = document.getElementById('toggleAccountDisplayModeBtn');
+    if (!box || !input || !toggle) return;
+    const permanent = state.identityType === 'permanent';
+    box.style.display = permanent ? 'flex' : 'none';
+    input.value = state.accountDisplayName || '';
+    toggle.disabled = !state.accountDisplayName;
+    toggle.innerHTML = state.accountDisplayMode === 'nickname'
+      ? '<i class="fa-solid fa-id-card"></i> 显示 ID'
+      : '<i class="fa-solid fa-address-card"></i> 显示昵称';
   }
 
   function handleError(d) {
@@ -488,6 +520,7 @@
     state,
     handlers: {
       onBindResult: handleBindResult,
+      onProfile: handleProfile,
       onError: handleError,
       onRequest: handleRequest,
       onAccepted: handleAccepted,
@@ -735,6 +768,7 @@
     uidModule.startUIDStatusUpdater(state, () => uidModule.updateUIDDisplay(state));
     const identityLabel = document.getElementById('identityLabel');
     if (identityLabel) identityLabel.textContent = state.identityType === 'permanent' ? '我的永久账号 ID' : '我的游客 ID（24H 有效期）';
+    updatePermanentProfileUI();
     const switchIdentityModeBtn = document.getElementById('switchIdentityModeBtn');
     if (switchIdentityModeBtn) {
       switchIdentityModeBtn.innerHTML = state.identityType === 'permanent'
@@ -756,6 +790,21 @@
       if (!file) return;
       try { await accountModule.importCredential(file); } catch (err) { alert('导入凭据失败，请选择有效的账号文件'); }
       event.target.value = '';
+    };
+    document.getElementById('saveAccountDisplayNameBtn').onclick = async () => {
+      try {
+        await accountModule.saveProfile(state, document.getElementById('accountDisplayNameInput').value);
+        updatePermanentProfileUI();
+        uidModule.updateUIDDisplay(state);
+        render();
+      } catch (err) { alert(err.message || '昵称保存失败'); }
+    };
+    document.getElementById('toggleAccountDisplayModeBtn').onclick = () => {
+      if (!state.accountDisplayName) return;
+      state.accountDisplayMode = state.accountDisplayMode === 'nickname' ? 'id' : 'nickname';
+      localStorage.setItem('chatAccountDisplayMode', state.accountDisplayMode);
+      updatePermanentProfileUI();
+      uidModule.updateUIDDisplay(state);
     };
 
     // Wire call overlay control buttons

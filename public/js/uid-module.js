@@ -42,8 +42,10 @@
       statusColor = '#2ecc71';
     }
 
+    const accountLabel = state.identityType === 'permanent' && state.accountDisplayName && state.accountDisplayMode === 'nickname'
+      ? state.accountDisplayName : state.myId;
     element.innerHTML = `
-      <span class="identity-value" title="${state.myId}">${state.myId}</span>
+      <span class="identity-value" title="${state.myId}">${accountLabel}</span>
       <span class="identity-status" style="
         display: inline-block;
         background: ${statusColor};

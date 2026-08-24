@@ -38,6 +38,7 @@ export interface ConnectionHandlerDeps {
 type WSMessage =
   | { type: 'ping'; clientTime?: unknown }
   | { type: 'bind'; uid: string; authToken?: string }
+  | { type: 'profileUpdate'; displayName?: unknown }
   | { type: 'request'; to: string }
   | { type: 'accept'; from: string }
   | { type: 'getHistory'; with: string }
@@ -87,7 +88,21 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
               return;
             }
             clients.set(uid, { ws, status: 'permanent', expiresAt: null, activeChat: null, identityType: 'permanent', accountId: uid });
-            ws.send(JSON.stringify({ type: 'bindResult', success: true, ttl: null, status: 'permanent', identityType: 'permanent' }));
+            const profile = accountService.getAccount(uid);
+            ws.send(JSON.stringify({ type: 'bindResult', success: true, ttl: null, status: 'permanent', identityType: 'permanent', profile }));
+            for (const [peerId, peer] of clients) {
+              if (peerId !== uid && peer.identityType === 'permanent' && peer.ws.readyState === WebSocket.OPEN) {
+                const peerProfile = accountService.getAccount(peerId);
+                if (peerProfile) ws.send(JSON.stringify({ type: 'profile', profile: peerProfile }));
+              }
+            }
+            if (profile) {
+              for (const [peerId, peer] of clients) {
+                if (peerId !== uid && peer.identityType === 'permanent' && peer.ws.readyState === WebSocket.OPEN) {
+                  peer.ws.send(JSON.stringify({ type: 'profile', profile }));
+                }
+              }
+            }
             broadcastOnline();
             return;
           }
@@ -139,6 +154,21 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             ws.send(JSON.stringify({ type: 'error', message: '不允许跨账号类型通信' }));
             return;
           }
+        }
+
+        if (msg.type === 'profileUpdate') {
+          if (!uid || !uid.startsWith('p_') || !clients.has(uid)) return;
+          const displayName = msg.displayName === undefined || msg.displayName === null ? null : String(msg.displayName).trim();
+          if (displayName !== null && (displayName.length < 1 || displayName.length > 20)) return;
+          if (!accountService.updateDisplayName(uid, displayName)) return;
+          const profile = accountService.getAccount(uid);
+          if (!profile) return;
+          for (const peer of clients.values()) {
+            if (peer.identityType === 'permanent' && peer.ws.readyState === WebSocket.OPEN) {
+              peer.ws.send(JSON.stringify({ type: 'profile', profile }));
+            }
+          }
+          return;
         }
 
         if (msg.type === 'request') {

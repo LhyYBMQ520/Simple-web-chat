@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=202608240357">
+  <link rel="stylesheet" href="css/style.css?v=202608241307">
   <title>L Chat</title>
 </head>
 
@@ -60,6 +60,11 @@
         <div id="identityLabel" style="display:flex;align-items:center;gap:6px;margin-bottom:4px">我的ID（24H 有效期）</div>
         <div id="myId"></div>
         <div class="account-actions">
+          <div id="permanentProfileActions" style="display:none">
+            <input id="accountDisplayNameInput" type="text" maxlength="20" placeholder="设置永久账号昵称">
+            <button id="saveAccountDisplayNameBtn" type="button" title="保存昵称"><i class="fa-solid fa-check"></i> 保存昵称</button>
+            <button id="toggleAccountDisplayModeBtn" type="button" title="切换显示昵称或 ID"><i class="fa-solid fa-id-card"></i> 显示 ID</button>
+          </div>
           <button id="exportAccountBtn" type="button" title="导出永久账号凭据"><i class="fa-solid fa-download"></i> 导出凭据</button>
           <button id="importAccountBtn" type="button" title="导入永久账号凭据"><i class="fa-solid fa-upload"></i> 导入凭据</button>
           <input id="accountCredentialInput" type="file" accept="application/json" hidden>
@@ -160,18 +165,18 @@
   <div id="callIncomingPrompt" class="call-incoming-prompt" style="display:none;"></div>
 
   <script src="js/config.js?v=202608240324"></script>
-  <script src="js/app-state.js?v=202608240324"></script>
-  <script src="js/account-module.js?v=202608240339"></script>
+  <script src="js/app-state.js?v=202608241307"></script>
+  <script src="js/account-module.js?v=202608241307"></script>
   <script src="js/android-screen-source-module.js?v=202608240324"></script>
   <script src="js/webrtc-module.js?v=202608240324"></script>
   <script src="js/webrtc-ui-module.js?v=202608240324"></script>
-  <script src="js/uid-module.js?v=202608240324"></script>
+  <script src="js/uid-module.js?v=202608241307"></script>
   <script src="js/message-module.js?v=202608240324"></script>
-  <script src="js/session-module.js?v=202608240324"></script>
-  <script src="js/ws-module.js?v=202608240324"></script>
+  <script src="js/session-module.js?v=202608241307"></script>
+  <script src="js/ws-module.js?v=202608241307"></script>
   <script src="js/file-upload-module.js?v=202608240324"></script>
   <script src="js/emoji-data.js?v=202608240324"></script>
   <script src="js/emoji-module.js?v=202608240324"></script>
-  <script src="js/script.js?v=202608240324"></script>
+  <script src="js/script.js?v=202608241307"></script>
 </body>
 </html>
