@@ -349,12 +349,13 @@ Simple-web-chat/
 - **用户绑定**：接收并绑定用户 ID 和 WebSocket 连接
 - **消息路由**：实现两个用户间的消息转发
 - **在线列表广播**：实时推送在线用户列表
-- **数据持久化**：消息在临时 ID 生命周期内存储到 SQLite 数据库
+- **数据持久化**：游客消息按 24 小时生命周期存储到 `db/guest-chats`；永久账号消息存储到 `db/account-chats`，不会被游客 UID 清理任务删除
 - **消息编辑/撤回**：提供 `editMessage` 与 `recallMessage` 协议，服务端校验消息归属与会话关系后更新数据库并双向广播变更
 - **消息已读同步**：通过 `read_at` 字段标记已读状态；当用户进入会话或正在查看该会话时，自动更新并推送已读状态
 - **心跳响应机制**：处理前端 `ping` 心跳并回传 `pong`，用于客户端连接质量与延迟测量
 - **UID 生命周期管理**：记录 UID 创建时间，自动计算 24 小时过期时间，前后端统一校验 UID 有效性；过期时自动删除关联的会话 DB 文件
-- **会话数据库独立存储**：每对用户拥有独立数据库文件，存放在 `/db` 目录，文件按排序后的 `uid1,uid2.db` 命名以避免重复
+- **会话数据库独立存储**：每对用户拥有独立数据库文件，按身份类型分类存放在 `db/guest-chats` 或 `db/account-chats`，文件按排序后的 ID 命名以避免重复；旧版本根目录数据库会在启动时迁移到游客目录
+- **永久账号认证**：通过 ECDSA P-256 challenge-response 验证公钥，服务端仅保存公钥和会话令牌哈希；挑战有效期 2 分钟，登录会话有效期 30 天
 - **对象存储服务**：以 Cloudflare R2 为默认实现，提供预签名上传 URL、带 `response-content-disposition` 的预签名下载 URL（307 重定向，不经过应用服务器传输文件流），并在撤回文件消息时请求删除对象
 - **文件上传校验**：前后端双重校验文件大小，限制值由 `MAX_FILE_SIZE` 环境变量统一控制，通过 `/js/config.js` 动态注入前端
 - **动态前端配置**：`/js/config.js` 由服务端动态生成并禁用缓存，向浏览器注入 `MAX_FILE_SIZE`、WebRTC ICE 服务器及 TURN 可用状态
@@ -365,7 +366,8 @@ Simple-web-chat/
 - **模块化架构**：`script.js` 负责入口装配，核心逻辑拆分至状态、UID、消息、会话、WebSocket、文件、表情、Android 本机媒体源和 WebRTC 模块
 - **UI 交互**：会话管理、聊天窗口、消息输入等
 - **WebSocket 通信**：与服务器建立持久连接
-- **本地存储**：使用 localStorage 保存会话、备注、ID、通话质量和麦克风处理设置
+- **本地存储**：使用 localStorage 保存会话、备注、身份模式、账号 ID 和通话设置；永久账号密钥保存在 IndexedDB（同时保留可导出的 SPKI/PKCS8 凭据），登录 session token 仅暂存在 sessionStorage
+- **账号管理**：首次进入可选择游客或永久账号；支持模式切换二次确认、加密凭据导出/导入，以及清除页面数据后的账号恢复
 - **历史加载**：从服务器查询消息历史记录
 - **状态同步**：实时更新在线状态和未读计数
 - **连接状态可视化**：在侧边栏标题显示连接状态图标（连接中/重连中/已断开/已连接）
@@ -438,6 +440,9 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 ```javascript
 // 绑定用户
 {type: "bind", uid: "user_id"}
+
+// 永久账号绑定（必须携带登录后获得的短期令牌）
+{type: "bind", uid: "p_xxx", authToken: "session_token"}
 
 // 发送聊天请求
 {type: "request", to: "target_id"}
@@ -513,6 +518,20 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 {type: "iceCandidate", to: "peerUID", candidate: {candidate: "...", sdpMid: "...", sdpMLineIndex: 0, candidateType: "host|srflx|relay", protocol: "udp|tcp", relayProtocol: "udp|tcp|tls"}}
 ```
 
+### 永久账号 HTTP API
+
+```text
+POST /api/account/challenge
+请求：{ publicKey }
+响应：{ challengeId, challenge, accountId, created }
+
+POST /api/account/verify
+请求：{ publicKey, challengeId, signature }
+响应：{ success, accountId, sessionToken, expiresAt }
+```
+
+客户端使用 Web Crypto API 生成 ECDSA P-256 密钥对并签名 challenge。私钥不会发送到服务端；导出凭据使用用户设置的密码进行 AES-GCM 加密。清除浏览器网站数据后，需要通过导入凭据重新恢复账号。
+
 ## 📅 未来计划
 
 - [ ] 添加端到端加密与隐私保护功能（暂缓）
@@ -524,7 +543,8 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 
 ## 🔒 安全性说明
 
-- 本应用面向演示与学习场景，当前没有账号认证、端到端加密、速率限制或完善的内容校验，不应直接用于敏感通信
+- 本应用面向演示与学习场景，虽然永久账号已经提供公钥 challenge-response 认证，但当前仍没有端到端加密、完善的速率限制或完整的内容校验，不应直接用于敏感通信
+- 永久账号的私钥只保存在浏览器 IndexedDB；服务端无法替用户找回丢失的私钥。加密凭据文件应妥善保管，导入密码不会上传到服务端
 - 临时 ID 是访问身份凭据；获得某个 ID 的人可能冒用该身份，24 小时过期机制只是生命周期控制，不构成隐私或身份安全保证
 - 聊天内容以明文存储在服务端 SQLite；WebRTC 媒体由浏览器加密传输，但信令与普通消息仍需依赖 HTTPS/WSS 保护传输链路
 - 若启用 R2 公开读取，拥有对象 URL 的人可能直接访问文件；生产环境应评估私有对象、鉴权下载、内容校验、CSP 和限流方案
