@@ -366,6 +366,24 @@ button:hover {
   background: #2563eb;
 }
 
+/* 触摸设备会在点击后短暂保留 :hover，避免侧栏按钮卡在悬停颜色。 */
+@media (hover: none) {
+  .sidebar button:hover {
+    background: #3b82f6;
+  }
+
+  .sidebar .account-actions button:hover,
+  .sidebar .switch-identity-btn:hover {
+    border-color: #cbd5e1;
+    background: #fff;
+    color: #475569;
+  }
+
+  .sidebar .copy-btn:hover {
+    background: #2d7dff;
+  }
+}
+
 /* 聊天区域 */
 .chat {
   flex: 1;
