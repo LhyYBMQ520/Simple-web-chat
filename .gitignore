@@ -141,3 +141,4 @@ vite.config.ts.timestamp-*
 /db
 /.claude
 HANDOFF.md
+代办.md
