@@ -1,4 +1,4 @@
-﻿(function bootstrapChatApp(global) {
+(function bootstrapChatApp(global) {
   const appStateModule = global.ChatAppState;
   const uidModule = global.ChatUIDModule;
   const accountModule = global.ChatAccountModule;
@@ -212,6 +212,27 @@
     document.getElementById('msgBox').innerHTML = '';
 
     render();
+  }
+
+  function syncResponsiveLayout() {
+    const sidebar = document.querySelector('.sidebar');
+    const chat = document.querySelector('.chat');
+    const inputBar = document.querySelector('.input-bar');
+    if (!sidebar || !chat || !inputBar) return;
+
+    const isMobile = window.innerWidth <= 768;
+    const hasCurrentSession = Boolean(state.current);
+
+    inputBar.style.display = hasCurrentSession ? 'flex' : 'none';
+
+    if (!isMobile) {
+      sidebar.classList.remove('hidden');
+      chat.classList.remove('hidden');
+      return;
+    }
+
+    sidebar.classList.toggle('hidden', hasCurrentSession);
+    chat.classList.toggle('hidden', !hasCurrentSession);
   }
 
   function deleteSession(id) {
@@ -1022,22 +1043,12 @@
       }
     });
 
-    document.querySelector('.input-bar').style.display = 'none';
+    syncResponsiveLayout();
 
-    if (window.innerWidth <= 768) {
-      document.querySelector('.chat').classList.add('hidden');
-    }
-
-    let lastIsMobile = window.innerWidth <= 768;
+    let layoutSyncFrame = 0;
     window.addEventListener('resize', () => {
-      // 通话中禁止刷新，避免 WebRTC 连接中断
-      if (webrtcModule && webrtcModule.isCallActive()) return;
-
-      const isMobile = window.innerWidth <= 768;
-      if (lastIsMobile !== isMobile) {
-        lastIsMobile = isMobile;
-        location.reload();
-      }
+      cancelAnimationFrame(layoutSyncFrame);
+      layoutSyncFrame = requestAnimationFrame(syncResponsiveLayout);
     });
   };
 })(window);
