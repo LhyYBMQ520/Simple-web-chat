@@ -432,7 +432,6 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             return;
           }
 
-          const oldContent = row.content;
           const editedAt = Date.now();
           const update = sessionDB.prepare('UPDATE messages SET content=?, edited_at=? WHERE id=?');
           update.run(newContent, editedAt, messageId);
@@ -484,8 +483,6 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             return;
           }
 
-          const wasRecalled = (row.status || 'normal') === 'recalled';
-          const originalContent = row.content;
           if ((row.status || 'normal') !== 'recalled') {
             const update = sessionDB.prepare("UPDATE messages SET content='[消息已撤回]', status='recalled', edited_at=NULL WHERE id=?");
             update.run(messageId);
