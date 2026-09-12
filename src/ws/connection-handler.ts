@@ -39,6 +39,10 @@ type WSMessage =
   | { type: 'ping'; clientTime?: unknown }
   | { type: 'bind'; uid: string; authToken?: string }
   | { type: 'profileUpdate'; displayName?: unknown }
+  | { type: 'syncConversations'; conversations?: unknown }
+  | { type: 'updateConversation'; peerId?: unknown; remark?: unknown; lastMessageTime?: unknown }
+  | { type: 'deleteConversation'; peerId?: unknown }
+  | { type: 'updateRemark'; peerId?: unknown; remark?: unknown }
   | { type: 'request'; to: string }
   | { type: 'accept'; from: string }
   | { type: 'getHistory'; with: string }
@@ -89,7 +93,8 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             }
             clients.set(uid, { ws, status: 'permanent', expiresAt: null, activeChat: null, identityType: 'permanent', accountId: uid });
             const profile = accountService.getAccount(uid);
-            ws.send(JSON.stringify({ type: 'bindResult', success: true, ttl: null, status: 'permanent', identityType: 'permanent', profile }));
+            const conversations = accountService.getConversations(uid);
+            ws.send(JSON.stringify({ type: 'bindResult', success: true, ttl: null, status: 'permanent', identityType: 'permanent', profile, conversations }));
             for (const [peerId, peer] of clients) {
               if (peerId !== uid && peer.identityType === 'permanent' && peer.ws.readyState === WebSocket.OPEN) {
                 const peerProfile = accountService.getAccount(peerId);
@@ -168,6 +173,48 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
               peer.ws.send(JSON.stringify({ type: 'profile', profile }));
             }
           }
+          return;
+        }
+
+        if (msg.type === 'syncConversations') {
+          if (!uid || !uid.startsWith('p_') || !clients.has(uid)) return;
+          if (!Array.isArray(msg.conversations)) return;
+          for (const item of msg.conversations) {
+            if (!item || typeof item.peerId !== 'string') continue;
+            const remark = item.remark === undefined || item.remark === null ? null : String(item.remark).trim();
+            const lastMessageTime = Number(item.lastMessageTime);
+            accountService.upsertConversation(uid, item.peerId, remark, Number.isFinite(lastMessageTime) ? lastMessageTime : null);
+          }
+          const conversations = accountService.getConversations(uid);
+          ws.send(JSON.stringify({ type: 'conversations', conversations }));
+          return;
+        }
+
+        if (msg.type === 'updateConversation') {
+          if (!uid || !uid.startsWith('p_') || !clients.has(uid)) return;
+          const peerId = typeof msg.peerId === 'string' ? msg.peerId : null;
+          if (!peerId) return;
+          const remark = msg.remark === undefined || msg.remark === null ? null : String(msg.remark).trim();
+          const lastMessageTime = Number(msg.lastMessageTime);
+          accountService.upsertConversation(uid, peerId, remark, Number.isFinite(lastMessageTime) ? lastMessageTime : null);
+          return;
+        }
+
+        if (msg.type === 'deleteConversation') {
+          if (!uid || !uid.startsWith('p_') || !clients.has(uid)) return;
+          const peerId = typeof msg.peerId === 'string' ? msg.peerId : null;
+          if (!peerId) return;
+          accountService.deleteConversation(uid, peerId);
+          return;
+        }
+
+        if (msg.type === 'updateRemark') {
+          if (!uid || !uid.startsWith('p_') || !clients.has(uid)) return;
+          const peerId = typeof msg.peerId === 'string' ? msg.peerId : null;
+          if (!peerId) return;
+          const remark = msg.remark === undefined || msg.remark === null ? null : String(msg.remark).trim();
+          if (remark !== null && remark.length > 20) return;
+          accountService.updateRemark(uid, peerId, remark);
           return;
         }
 
@@ -296,6 +343,11 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
           const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type,quote_id) VALUES (?,?,?,?,?,?,?,?,?)');
           const result = insert.run(uid, msg.to, content, now, 'normal', null, readAt, 'text', quoteId);
 
+          if (uid.startsWith('p_') && msg.to.startsWith('p_')) {
+            accountService.upsertConversation(uid, msg.to, undefined, now);
+            accountService.upsertConversation(msg.to, uid, undefined, now);
+          }
+
           const messagePayload = {
             id: Number(result.lastInsertRowid),
             sender: uid,
@@ -370,6 +422,11 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
 
           const insert = sessionDB.prepare('INSERT INTO messages (sender,receiver,content,time,status,edited_at,read_at,msg_type,file_key,quote_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
           const result = insert.run(uid, msg.to, contentStr, now, 'normal', null, readAt, msgType, fileKey, quoteId);
+
+          if (uid.startsWith('p_') && msg.to.startsWith('p_')) {
+            accountService.upsertConversation(uid, msg.to, undefined, now);
+            accountService.upsertConversation(msg.to, uid, undefined, now);
+          }
 
           const messagePayload = {
             id: Number(result.lastInsertRowid),

@@ -216,7 +216,7 @@
         state.remarks[state.contextMenuTargetId] = remarkText;
       }
 
-      onPersistRemarks();
+      onPersistRemarks(state.contextMenuTargetId, state.remarks[state.contextMenuTargetId]);
       closeRemarkModal();
       onRenderSessions();
     }

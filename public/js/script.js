@@ -84,6 +84,9 @@
     if (!state.sessions.includes(id)) {
       state.sessions.push(id);
       appStateModule.persistSessions(state);
+      if (state.identityType === 'permanent' && id.startsWith('p_')) {
+        wsModule.updateConversation(id, state.remarks && state.remarks[id] ? state.remarks[id] : null, Date.now());
+      }
       render();
     }
   }
@@ -238,6 +241,9 @@
   function deleteSession(id) {
     state.sessions = state.sessions.filter(item => item !== id);
     appStateModule.persistSessions(state);
+    if (state.identityType === 'permanent' && id.startsWith('p_')) {
+      wsModule.deleteConversation(id);
+    }
 
     delete state.unreadCount[id];
 
@@ -280,6 +286,25 @@
       localStorage.setItem('chatAccountDisplayName', state.accountDisplayName);
       updatePermanentProfileUI();
     }
+
+    // 永久账号登录成功后，从服务端恢复会话列表与备注
+    if (state.identityType === 'permanent' && Array.isArray(d.conversations)) {
+      const localSessions = new Set(state.sessions);
+      d.conversations.forEach(function (conv) {
+        if (!conv || typeof conv.peerId !== 'string' || !conv.peerId.startsWith('p_')) return;
+        if (!localSessions.has(conv.peerId)) {
+          state.sessions.push(conv.peerId);
+          localSessions.add(conv.peerId);
+        }
+        if (conv.remark && !state.remarks[conv.peerId]) {
+          state.remarks[conv.peerId] = conv.remark;
+        }
+      });
+      appStateModule.persistSessions(state);
+      appStateModule.persistRemarks(state);
+      render();
+    }
+
     uidModule.updateUIDDisplay(state);
     console.log(`[UID 绑定成功] 状态: ${d.status} | 剩余: ${Math.floor(d.ttl / 1000)}秒`);
     wsModule.syncActiveChatState();
@@ -524,7 +549,12 @@
     onConfirmDelete: confirmDelete,
     onBackToSessions: backToSessions,
     onRenderSessions: render,
-    onPersistRemarks: () => appStateModule.persistRemarks(state),
+    onPersistRemarks: function (peerId, remark) {
+      appStateModule.persistRemarks(state);
+      if (state.identityType === 'permanent' && peerId && peerId.startsWith('p_')) {
+        wsModule.updateRemark(peerId, remark || null);
+      }
+    },
     isTurnConfigured: () => !!(webrtcModule && webrtcModule.isTurnConfigured())
   });
 
@@ -553,6 +583,10 @@
       onOnline: handleOnline,
       onConnectionStateChange: handleConnectionStateChange,
       onLatencyUpdate: handleLatencyUpdate,
+      onConversations: function (conversations) {
+        // 服务端已确认会话列表同步；bindResult 中已完成恢复，此处仅作确认
+        console.log('[会话列表] 服务端同步确认:', conversations && conversations.length);
+      },
       onCallRequest: handleCallRequest,
       onCallAccept: handleCallAccept,
       onCallReject: handleCallReject,

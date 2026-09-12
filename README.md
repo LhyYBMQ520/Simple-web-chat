@@ -4,17 +4,17 @@
 
 ## 📋 项目介绍
 
-用户无需注册即可获得唯一的临时 ID，通过交换 ID 建立会话并实时对话。首次打开网页时也可以选择免注册永久账号：浏览器生成密钥对，服务端保存公钥，客户端使用私钥完成 challenge-response 登录。消息按身份类型分类存入服务端 SQLite 数据库，游客数据遵循 24 小时生命周期，永久账号数据不会因游客 UID 清理而删除。
+用户无需注册即可获得唯一的临时 ID，通过交换 ID 建立会话并实时对话。首次打开网页时也可以选择免注册永久账号：浏览器生成密钥对，服务端保存公钥，客户端使用私钥完成 challenge-response 登录；永久账号的会话列表和联系人备注会持久化到服务端，清除浏览器数据或更换设备后，只要导入凭据即可恢复原有会话。消息按身份类型分类存入服务端 SQLite 数据库，游客数据遵循 24 小时生命周期，永久账号数据不会因游客 UID 清理而删除。
 
 ## ✨ 主要特性
 
 - **⚡ 实时通信**：基于 WebSocket 的双向实时消息传输
 - **🆔 临时身份**：自动生成唯一用户 ID，有效期为 24 小时，到期后自动换新并清理关联会话数据
-- **🔐 免注册永久账号**：无需邮箱或密码，使用浏览器生成的 ECDSA P-256 密钥对完成身份认证；私钥保存在浏览器，可导出凭据用于清除网站数据后的恢复
+- **🔐 免注册永久账号**：无需邮箱或密码，使用浏览器生成的 ECDSA P-256 密钥对完成身份认证；私钥保存在浏览器，可导出凭据用于清除网站数据或更换设备后的恢复
 - **💾 消息存储**：使用 SQLite 数据库持久化聊天记录
-- **📋 会话管理**：支持多会话管理，易于切换
+- **📋 会话管理**：支持多会话管理，易于切换；永久账号的会话列表和备注会同步到服务端，凭据恢复后自动还原
 - **👥 在线状态**：实时显示联系人在线/离线状态
-- **📝 用户备注**：为联系人设置备注名称，便于识别
+- **📝 用户备注**：为联系人设置备注名称，便于识别；永久账号备注跨设备同步
 - **🔔 未读提醒**：未读消息提示，及时获取新消息通知
 - **✏️ 消息编辑与撤回**：点击编辑按钮一键回填至输入框，修改后发送即可更新消息；或撤回为系统提示态
 - **⌨️ 多行输入框**：支持桌面 Enter 发送、移动端 Enter 换行，Ctrl/Shift/Cmd+Enter 手动换行；粘贴文本保留原始换行，输入框自动增高至 3 行后滚动
@@ -356,6 +356,7 @@ Simple-web-chat/
 - **UID 生命周期管理**：记录 UID 创建时间，自动计算 24 小时过期时间，前后端统一校验 UID 有效性；过期时自动删除关联的会话 DB 文件
 - **会话数据库独立存储**：每对用户拥有独立数据库文件，按身份类型分类存放在 `db/guest-chats` 或 `db/account-chats`，文件按排序后的 ID 命名以避免重复；旧版本根目录数据库会在启动时迁移到游客目录
 - **永久账号认证**：通过 ECDSA P-256 challenge-response 验证公钥，服务端仅保存公钥和会话令牌哈希；挑战有效期 2 分钟，登录会话有效期 30 天
+- **永久账号会话同步**：`accounts.db` 中的 `account_conversations` 表保存永久账号的会话关系、备注和最后消息时间；绑定成功后随 `bindResult` 下发，添加/删除/备注变更实时同步到服务端，首次升级时从已有 `db/account-chats/` 文件自动导入历史关系
 - **对象存储服务**：以 Cloudflare R2 为默认实现，提供预签名上传 URL、带 `response-content-disposition` 的预签名下载 URL（307 重定向，不经过应用服务器传输文件流），并在撤回文件消息时请求删除对象
 - **文件上传校验**：前后端双重校验文件大小，限制值由 `MAX_FILE_SIZE` 环境变量统一控制，通过 `/js/config.js` 动态注入前端
 - **动态前端配置**：`/js/config.js` 由服务端动态生成并禁用缓存，向浏览器注入 `MAX_FILE_SIZE`、WebRTC ICE 服务器及 TURN 可用状态
@@ -367,7 +368,8 @@ Simple-web-chat/
 - **UI 交互**：会话管理、聊天窗口、消息输入等
 - **WebSocket 通信**：与服务器建立持久连接
 - **本地存储**：使用 localStorage 保存会话、备注、身份模式、账号 ID 和通话设置；永久账号密钥保存在 IndexedDB（同时保留可导出的 SPKI/PKCS8 凭据），登录 session token 仅暂存在 sessionStorage
-- **账号管理**：首次进入可选择游客或永久账号；支持模式切换二次确认、加密凭据导出/导入，以及清除页面数据后的账号恢复
+- **账号管理**：首次进入可选择游客或永久账号；支持模式切换二次确认、加密凭据导出/导入，以及清除页面数据或更换设备后的账号恢复；永久账号登录后会从服务端自动恢复会话列表与备注
+- **会话同步**：添加/删除会话、修改备注时，永久账号会实时通过 WebSocket 同步到服务端
 - **历史加载**：从服务器查询消息历史记录
 - **状态同步**：实时更新在线状态和未读计数
 - **连接状态可视化**：在侧边栏标题显示连接状态图标（连接中/重连中/已断开/已连接）
@@ -397,6 +399,18 @@ Simple-web-chat/
 | msg_type | TEXT | 消息类型（`text` / `image` / `file`） |
 | file_key | TEXT | 对象存储 Key，用于撤回时清理文件 |
 | quote_id | INTEGER | 引用的消息 ID（未引用为 `NULL`） |
+
+### account_conversations 表
+
+用于永久账号跨设备恢复会话列表与备注。
+
+| 字段名 | 类型 | 说明 |
+| ------- | ------ | ------ |
+| account_id | TEXT | 永久账号 ID |
+| peer_id | TEXT | 对端 ID |
+| remark | TEXT | 联系人备注（可为 `NULL`） |
+| last_message_time | INTEGER | 最后一条消息时间戳（可为 `NULL`） |
+| created_at | INTEGER | 会话记录创建时间戳 |
 
 ## 🌐 网络协议
 
@@ -442,6 +456,7 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 {type: "bind", uid: "user_id"}
 
 // 永久账号绑定（必须携带登录后获得的短期令牌）
+// 成功时服务端会额外返回 conversations 字段，包含该账号的会话列表与备注
 {type: "bind", uid: "p_xxx", authToken: "session_token"}
 
 // 发送聊天请求
@@ -488,6 +503,15 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 
 // 批量已读回执
 {type: "messagesRead", messages: [{id, sender, receiver, content, time, status, editedAt, readAt, msgType, fileKey, quoteId, quoteMessage}]}
+
+// 会话列表同步（永久账号）
+{type: "syncConversations", conversations: [{peerId, remark, lastMessageTime, createdAt}, ...]}
+{type: "conversations", conversations: [{peerId, remark, lastMessageTime, createdAt}, ...]}
+
+// 单个会话更新 / 删除 / 备注更新（永久账号）
+{type: "updateConversation", peerId: "p_xxx", remark?: "备注名", lastMessageTime?: 1710000000000}
+{type: "deleteConversation", peerId: "p_xxx"}
+{type: "updateRemark", peerId: "p_xxx", remark: "备注名"}
 
 // 在线用户列表
 {type: "online", list: ["user1", "user2", ...]}

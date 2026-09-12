@@ -183,6 +183,25 @@
       return sendJSON({ type: 'iceCandidate', to, candidate });
     }
 
+    function syncConversations(conversations) {
+      return sendJSON({ type: 'syncConversations', conversations });
+    }
+
+    function updateConversation(peerId, remark, lastMessageTime) {
+      const payload = { type: 'updateConversation', peerId };
+      if (remark !== undefined) payload.remark = remark;
+      if (lastMessageTime !== undefined) payload.lastMessageTime = lastMessageTime;
+      return sendJSON(payload);
+    }
+
+    function deleteConversation(peerId) {
+      return sendJSON({ type: 'deleteConversation', peerId });
+    }
+
+    function updateRemark(peerId, remark) {
+      return sendJSON({ type: 'updateRemark', peerId, remark });
+    }
+
     function connect() {
       bindLifecycleListeners();
       clearReconnectTimer();
@@ -227,6 +246,11 @@
 
         if (d.type === 'bindResult') {
           handlers.onBindResult(d);
+          return;
+        }
+
+        if (d.type === 'conversations') {
+          if (typeof handlers.onConversations === 'function') handlers.onConversations(d.conversations);
           return;
         }
 
@@ -347,6 +371,10 @@
       sendRecallMessage,
       sendFileMessage,
       syncActiveChatState,
+      syncConversations,
+      updateConversation,
+      deleteConversation,
+      updateRemark,
       sendCallRequest,
       sendCallAccept,
       sendCallReject,

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { ACCOUNT_DB_DIR, SESSION_DB_DIR } from '../config/constants.js';
+import { ACCOUNT_CHAT_DB_DIR, ACCOUNT_DB_DIR, SESSION_DB_DIR } from '../config/constants.js';
 
 const CHALLENGE_TTL = 2 * 60 * 1000;
 const SESSION_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -13,6 +13,13 @@ interface ChallengeRecord {
   expiresAt: number;
 }
 
+export interface ConversationRecord {
+  peerId: string;
+  remark: string | null;
+  lastMessageTime: number | null;
+  createdAt: number;
+}
+
 export interface AccountService {
   createChallenge(publicKey: string): { challengeId: string; challenge: string; accountId: string; created: boolean };
   verifyChallenge(publicKey: string, challengeId: string, signature: string): { accountId: string; sessionToken: string; expiresAt: number } | null;
@@ -20,6 +27,11 @@ export interface AccountService {
   getSessionAccountId(token: string): string | null;
   getAccount(accountId: string): { id: string; displayName: string | null } | null;
   updateDisplayName(accountId: string, displayName: string | null): boolean;
+  getConversations(accountId: string): ConversationRecord[];
+  upsertConversation(accountId: string, peerId: string, remark?: string | null, lastMessageTime?: number | null): boolean;
+  deleteConversation(accountId: string, peerId: string): boolean;
+  updateRemark(accountId: string, peerId: string, remark: string | null): boolean;
+  migrateConversationsFromChatFiles(accountId: string): void;
   close(): void;
 }
 
@@ -52,6 +64,17 @@ export function createAccountService(): AccountService {
       disabled INTEGER NOT NULL DEFAULT 0
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_conversations (
+      account_id TEXT NOT NULL,
+      peer_id TEXT NOT NULL,
+      remark TEXT,
+      last_message_time INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      PRIMARY KEY (account_id, peer_id)
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_account_conversations_account ON account_conversations(account_id, last_message_time DESC);`);
   sessionDB.exec(`CREATE TABLE IF NOT EXISTS account_sessions (
     token_hash TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -90,6 +113,7 @@ export function createAccountService(): AccountService {
     db.prepare(`INSERT INTO accounts (id, public_key, created_at, last_login_at)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(public_key) DO UPDATE SET last_login_at=excluded.last_login_at`).run(accountId, publicKey, now, now);
+    migrateConversationsFromChatFiles(accountId);
     const token = base64Url(crypto.randomBytes(32));
     const expiresAt = now + SESSION_TTL;
     sessionDB.prepare('INSERT INTO account_sessions (token_hash, account_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
@@ -129,10 +153,87 @@ export function createAccountService(): AccountService {
     return result.changes > 0;
   }
 
+  function getConversations(accountId: string): ConversationRecord[] {
+    const rows = db.prepare('SELECT peer_id AS peerId, remark, last_message_time AS lastMessageTime, created_at AS createdAt FROM account_conversations WHERE account_id=? ORDER BY last_message_time DESC, created_at DESC')
+      .all(accountId) as ConversationRecord[];
+    return rows;
+  }
+
+  function upsertConversation(accountId: string, peerId: string, remark?: string | null, lastMessageTime?: number | null): boolean {
+    const existing = db.prepare('SELECT 1 FROM account_conversations WHERE account_id=? AND peer_id=?').get(accountId, peerId);
+    const now = Date.now();
+    if (existing) {
+      const updates: string[] = [];
+      const params: (string | number | null)[] = [];
+      if (remark !== undefined) {
+        updates.push('remark=?');
+        params.push(remark === null ? null : remark.trim());
+      }
+      if (lastMessageTime !== undefined && Number.isFinite(lastMessageTime)) {
+        updates.push('last_message_time=?');
+        params.push(lastMessageTime);
+      }
+      if (updates.length === 0) return true;
+      params.push(accountId, peerId);
+      db.prepare(`UPDATE account_conversations SET ${updates.join(', ')} WHERE account_id=? AND peer_id=?`).run(...params);
+    } else {
+      db.prepare('INSERT INTO account_conversations (account_id, peer_id, remark, last_message_time, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(accountId, peerId, remark === null || remark === undefined ? null : remark.trim(), lastMessageTime ?? null, now);
+    }
+    return true;
+  }
+
+  function deleteConversation(accountId: string, peerId: string): boolean {
+    const result = db.prepare('DELETE FROM account_conversations WHERE account_id=? AND peer_id=?').run(accountId, peerId);
+    return result.changes > 0;
+  }
+
+  function updateRemark(accountId: string, peerId: string, remark: string | null): boolean {
+    const value = remark === null ? null : remark.trim();
+    if (value !== null && value.length > 20) return false;
+    const result = db.prepare('UPDATE account_conversations SET remark=? WHERE account_id=? AND peer_id=?').run(value, accountId, peerId);
+    return result.changes > 0;
+  }
+
+  function migrateConversationsFromChatFiles(accountId: string): void {
+    const hasAny = db.prepare('SELECT 1 FROM account_conversations WHERE account_id=? LIMIT 1').get(accountId);
+    if (hasAny) return;
+    if (!fs.existsSync(ACCOUNT_CHAT_DB_DIR)) return;
+
+    const now = Date.now();
+    const insert = db.prepare('INSERT OR IGNORE INTO account_conversations (account_id, peer_id, remark, last_message_time, created_at) VALUES (?, ?, ?, ?, ?)');
+
+    for (const file of fs.readdirSync(ACCOUNT_CHAT_DB_DIR)) {
+      if (!file.endsWith('.db')) continue;
+      const base = file.slice(0, -3);
+      const parts = base.split(',');
+      if (parts.length !== 2) continue;
+      const [id1, id2] = parts;
+      if (id1 === accountId) {
+        insert.run(accountId, id2, null, null, now);
+      } else if (id2 === accountId) {
+        insert.run(accountId, id1, null, null, now);
+      }
+    }
+  }
+
   const cleanupTimer = setInterval(() => {
     sessionDB.prepare('DELETE FROM account_sessions WHERE expires_at<=?').run(Date.now());
     for (const [id, record] of challenges) if (record.expiresAt <= Date.now()) challenges.delete(id);
   }, 60 * 1000);
 
-  return { createChallenge, verifyChallenge, verifySession, getSessionAccountId, getAccount, updateDisplayName, close: () => { clearInterval(cleanupTimer); db.close(); sessionDB.close(); } };
+  return {
+    createChallenge,
+    verifyChallenge,
+    verifySession,
+    getSessionAccountId,
+    getAccount,
+    updateDisplayName,
+    getConversations,
+    upsertConversation,
+    deleteConversation,
+    updateRemark,
+    migrateConversationsFromChatFiles,
+    close: () => { clearInterval(cleanupTimer); db.close(); sessionDB.close(); }
+  };
 }
