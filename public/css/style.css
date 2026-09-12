@@ -1306,6 +1306,7 @@ button:hover {
   padding: 0;
   margin: 0;
   transition: background 0.15s;
+  font-family: 'Noto Color Emoji', system-ui, sans-serif;
   font-size: 16px;
   line-height: 1;
 }
@@ -1400,6 +1401,16 @@ button:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
+}
+
+/* Hidden element to force early loading of Noto Color Emoji font */
+.emoji-font-preload {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  font-family: 'Noto Color Emoji', system-ui, sans-serif;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* ===== Emoji button in input bar ===== */

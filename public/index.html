@@ -8,11 +8,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=202609121816">
+  <link rel="stylesheet" href="css/style.css?v=202609122045">
   <title>L Chat</title>
 </head>
 
 <body>
+  <!-- 预加载 Noto Color Emoji 字体，避免首次打开表情面板时显示为系统默认字体 -->
+  <div class="emoji-font-preload" aria-hidden="true">😀😂❤️👍✨🎉🔥😭😊</div>
+
   <div id="identityModeOverlay" class="identity-mode-overlay" style="display:none;">
     <div class="identity-mode-dialog">
       <h2>选择使用模式</h2>
