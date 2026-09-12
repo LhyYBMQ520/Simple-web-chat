@@ -282,7 +282,6 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             }
           }
 
-          console.log(`[消息] ${uid} -> ${msg.to} : ${content}${quoteId ? ' | 引用消息ID: ' + quoteId : ''}`);
 
           const now = Date.now();
           const target = clients.get(msg.to);
@@ -355,7 +354,6 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             }
           }
 
-          console.log(`[文件消息] ${uid} -> ${msg.to} : ${msgType} | ${(msg.content as Record<string, string>).name || 'unknown'}${quoteId ? ' | 引用消息ID: ' + quoteId : ''}`);
 
           const now = Date.now();
           const target = clients.get(msg.to);
@@ -457,9 +455,6 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             target.ws.send(eventPayload);
           }
 
-          console.log(
-            `[消息编辑] ${uid} -> ${msg.to} | 消息ID: ${messageId} | 原文: "${dbService.previewContent(oldContent)}" | 新文: "${dbService.previewContent(newContent)}"`
-          );
         }
 
         if (msg.type === 'recallMessage') {
@@ -518,13 +513,6 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             target.ws.send(eventPayload);
           }
 
-          if (wasRecalled) {
-            console.log(`[消息撤回] ${uid} -> ${msg.to} | 消息ID: ${messageId} | 状态: 已是撤回消息`);
-          } else {
-            console.log(
-              `[消息撤回] ${uid} -> ${msg.to} | 消息ID: ${messageId} | 原文: "${dbService.previewContent(originalContent)}"`
-            );
-          }
         }
 
         if (msg.type === 'callRequest') {
