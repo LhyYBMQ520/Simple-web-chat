@@ -287,19 +287,15 @@
       updatePermanentProfileUI();
     }
 
-    // 永久账号登录成功后，从服务端恢复会话列表与备注
+    // 永久账号：服务端是真相源，用 bindResult 返回的会话列表覆盖本地缓存
     if (state.identityType === 'permanent' && Array.isArray(d.conversations)) {
-      const localSessions = new Set(state.sessions);
+      state.sessions = [];
+      state.remarks = {};
       d.conversations.forEach(function (conv) {
         if (!conv || typeof conv.peerId !== 'string' || !conv.peerId.startsWith('p_')) return;
-        if (!localSessions.has(conv.peerId)) {
-          state.sessions.push(conv.peerId);
-          localSessions.add(conv.peerId);
-        }
+        state.sessions.push(conv.peerId);
         if (conv.remark) {
           state.remarks[conv.peerId] = conv.remark;
-        } else if (conv.remark === null || conv.remark === '') {
-          delete state.remarks[conv.peerId];
         }
       });
       appStateModule.persistSessions(state);
