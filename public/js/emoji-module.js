@@ -76,11 +76,6 @@
       resultHeader.style.display = "none";
       scrollArea.appendChild(resultHeader);
 
-      // Category content area
-      var categoryContent = document.createElement("div");
-      categoryContent.className = "emoji-category-content";
-      scrollArea.appendChild(categoryContent);
-
       // Emoji grid
       emojiGrid = document.createElement("div");
       emojiGrid.className = "emoji-grid";
@@ -97,7 +92,7 @@
           // Clear search, show current category
           hideResultHeader();
           if (activeCategory) {
-            showCategoryGrid(activeCategory);
+            showCategoryGridByKey(activeCategory);
           } else {
             showCategoryGridByKey(categories[0].key);
           }
@@ -109,9 +104,8 @@
         }, 150);
       });
 
-      // Initial state: show first category as frequently used
-      renderFrequentEmojis();
-      activeCategory = "__frequent__";
+      // Initial state: show first category grid
+      showCategoryGridByKey(categories[0].key);
 
       // Prevent clicks inside picker from closing it
       wrapper.addEventListener("click", function (e) {
@@ -138,11 +132,6 @@
       var results = emojiData.searchEmojis(query);
       showResultHeader(results.length);
       renderEmojiGrid(results);
-    }
-
-    function renderFrequentEmojis() {
-      var frequent = emojiData.getFrequentEmojis();
-      renderEmojiGrid(frequent);
     }
 
     /** Render a flat emoji array into the grid */
@@ -180,12 +169,6 @@
 
     function showCategoryGridByKey(categoryKey) {
       if (!emojiGrid) return;
-
-      if (categoryKey === "__frequent__") {
-        activeCategory = "__frequent__";
-        renderFrequentEmojis();
-        return;
-      }
 
       // Find category and render its subcategory sections
       var categories = emojiData.categories;
@@ -273,11 +256,6 @@
       container.style.top = top + "px";
       container.style.display = "";
       isVisible = true;
-
-      // If showing frequently used, re-render
-      if (activeCategory === "__frequent__") {
-        renderFrequentEmojis();
-      }
     }
 
     function hide() {

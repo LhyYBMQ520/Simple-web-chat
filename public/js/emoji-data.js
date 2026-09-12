@@ -2401,30 +2401,9 @@
     });
   }
 
-  /** Get frequently used emojis as a default quick-access set */
-  var EMOJI_FREQUENT_KEYS = [
-    "face_with_tears_of_joy", "red_heart", "grinning_squinting_face",
-    "beaming_face", "thumbs_up", "clapping_hands", "folded_hands",
-    "crying_face", "smiling_face_with_hearts", "fire", "ok_hand",
-    "pleading_face", "loudly_crying_face", "star_struck_face",
-    "rolling_on_the_floor_laughing", "hugging_face", "angry_face",
-    "face_screaming_in_fear", "thinking_face", "smiling_face_with_sunglasses",
-    "hundred_points", "party_popper", "winking_face", "smirking_face",
-    "face_with_rolling_eyes", "sleeping_face", "skull", "speech_balloon",
-    "cherry_blossom", "sparkles"
-  ];
-
-  function getFrequentEmojis() {
-    var map = {};
-    EMOJI_FLAT_INDEX.forEach(function(e) { map[e.key] = e; });
-    return EMOJI_FREQUENT_KEYS.map(function(k) { return map[k]; }).filter(Boolean);
-  }
-
   global.ChatEmojiData = {
     categories: EMOJI_CATEGORIES,
     flatIndex: EMOJI_FLAT_INDEX,
-    searchEmojis: searchEmojis,
-    getFrequentEmojis: getFrequentEmojis,
-    frequentKeys: EMOJI_FREQUENT_KEYS
+    searchEmojis: searchEmojis
   };
 })(window);
