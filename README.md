@@ -13,6 +13,7 @@
 - **🔐 免注册永久账号**：无需邮箱或密码，使用浏览器生成的 ECDSA P-256 密钥对完成身份认证；私钥保存在浏览器，可导出凭据用于清除网站数据或更换设备后的恢复
 - **💾 消息存储**：使用 SQLite 数据库持久化聊天记录
 - **📋 会话管理**：支持多会话管理，易于切换；永久账号的会话列表和备注会同步到服务端，凭据恢复后自动还原
+- **🏷️ 永久账号昵称**：永久账号可设置、修改和清空显示昵称，会话列表与对方聊天顶部优先展示昵称，未设置时回退显示 ID；昵称通过服务端实时同步给所有在线永久账号客户端
 - **👥 在线状态**：实时显示联系人在线/离线状态
 - **📝 用户备注**：为联系人设置备注名称，便于识别；永久账号备注跨设备同步
 - **🔔 未读提醒**：未读消息提示，及时获取新消息通知
@@ -324,7 +325,7 @@ Simple-web-chat/
     │   └── style.css               # 全局样式
     ├── js/
     │   ├── app-state.js             # 前端状态
-    │   ├── account-module.js         # 永久账号密钥、认证与凭据导入导出
+    │   ├── account-module.js         # 永久账号密钥、认证、凭据导入导出与昵称管理
     │   ├── android-screen-source-module.js # Android 本机 WebRTC 屏幕源
     │   ├── android-pcm-worklet.js   # Android 系统音频 PCM AudioWorklet
     │   ├── uid-module.js            # UID 生成与展示
@@ -336,6 +337,7 @@ Simple-web-chat/
     │   ├── webrtc-ui-module.js      # WebRTC 通话 UI
     │   ├── emoji-data.js            # 表情数据
     │   ├── emoji-module.js          # 表情选择器
+    │   ├── test-version-notice-module.js # 测试版本提示弹窗
     │   └── script.js                # 入口与模块装配
     └── fontawesome-free-7.2.0-web/ # 本地图标库
 ```
@@ -356,7 +358,10 @@ Simple-web-chat/
 - **UID 生命周期管理**：记录 UID 创建时间，自动计算 24 小时过期时间，前后端统一校验 UID 有效性；过期时自动删除关联的会话 DB 文件
 - **会话数据库独立存储**：每对用户拥有独立数据库文件，按身份类型分类存放在 `db/guest-chats` 或 `db/account-chats`，文件按排序后的 ID 命名以避免重复；旧版本根目录数据库会在启动时迁移到游客目录
 - **永久账号认证**：通过 ECDSA P-256 challenge-response 验证公钥，服务端仅保存公钥和会话令牌哈希；挑战有效期 2 分钟，登录会话有效期 30 天
+- **认证安全增强**：`challenge` 请求绑定客户端 IP 摘要，`verify` 时校验 IP 一致性；对 challenge/verify 接口按 IP 限流；verify 失败累计达到阈值后按 IP 和公钥锁定一段时间；完善 challengeId、签名等字段长度校验
+- **禁用账号即时失效**：账号被禁用后，已存在的登录 session 在下次校验时立即失效并被清理
 - **永久账号会话同步**：`accounts.db` 中的 `account_conversations` 表保存永久账号的会话关系、备注和最后消息时间；绑定成功后随 `bindResult` 下发，客户端以服务端数据为准覆盖本地缓存；添加/删除/备注变更实时同步到服务端，首次升级时从已有 `db/account-chats/` 文件自动导入历史关系
+- **永久账号昵称同步**：`accounts` 表的 `display_name` 字段保存永久账号昵称；`POST /api/account/profile` 修改昵称后，服务端通过 WebSocket `profile` 消息广播给所有在线永久账号客户端，绑定成功时也会下发本人与已在线永久账号的资料
 - **对象存储服务**：以 Cloudflare R2 为默认实现，提供预签名上传 URL、带 `response-content-disposition` 的预签名下载 URL（307 重定向，不经过应用服务器传输文件流），并在撤回文件消息时请求删除对象
 - **文件上传校验**：前后端双重校验文件大小，限制值由 `MAX_FILE_SIZE` 环境变量统一控制，通过 `/js/config.js` 动态注入前端
 - **动态前端配置**：`/js/config.js` 由服务端动态生成并禁用缓存，向浏览器注入 `MAX_FILE_SIZE`、WebRTC ICE 服务器及 TURN 可用状态
@@ -368,8 +373,9 @@ Simple-web-chat/
 - **UI 交互**：会话管理、聊天窗口、消息输入等
 - **WebSocket 通信**：与服务器建立持久连接
 - **本地存储**：使用 localStorage 保存会话、备注、身份模式、账号 ID 和通话设置；永久账号密钥保存在 IndexedDB（同时保留可导出的 SPKI/PKCS8 凭据），登录 session token 仅暂存在 sessionStorage
-- **账号管理**：首次进入可选择游客或永久账号；支持模式切换二次确认、加密凭据导出/导入，以及清除页面数据或更换设备后的账号恢复
+- **账号管理**：首次进入可选择游客或永久账号；支持模式切换二次确认、加密凭据导出/导入，以及清除页面数据或更换设备后的账号恢复；永久账号支持设置、修改、清空昵称，并在昵称与对方 ID 之间切换显示
 - **会话同步**：游客账号完全使用本地 localStorage；永久账号以服务端 `account_conversations` 表为真相源，添加/删除会话、修改备注时实时同步到服务端，登录成功后自动用服务端数据覆盖本地缓存
+- **昵称同步与展示**：永久账号登录后通过 `bindResult` 和 `profile` 消息接收并缓存所有在线永久账号资料；会话列表与对方聊天顶部优先显示昵称，无昵称时回退显示 ID；备注仍显示在昵称/ID 前方
 - **历史加载**：从服务器查询消息历史记录
 - **状态同步**：实时更新在线状态和未读计数
 - **连接状态可视化**：在侧边栏标题显示连接状态图标（连接中/重连中/已断开/已连接）
@@ -456,7 +462,7 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 {type: "bind", uid: "user_id"}
 
 // 永久账号绑定（必须携带登录后获得的短期令牌）
-// 成功时服务端会额外返回 conversations 字段，包含该账号的会话列表与备注
+// 成功时服务端会额外返回 profile（本人资料）和 conversations（会话列表与备注）字段
 {type: "bind", uid: "p_xxx", authToken: "session_token"}
 
 // 发送聊天请求
@@ -513,6 +519,9 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 {type: "deleteConversation", peerId: "p_xxx"}
 {type: "updateRemark", peerId: "p_xxx", remark: "备注名"}
 
+// 永久账号资料更新（服务端在绑定成功和昵称修改后广播）
+{type: "profile", profile: {id: "p_xxx", displayName: "昵称"}}
+
 // 在线用户列表
 {type: "online", list: ["user1", "user2", ...]}
 
@@ -548,11 +557,21 @@ GET /api/download?key=chat/2026/05/10/...&name=photo.jpg
 POST /api/account/challenge
 请求：{ publicKey }
 响应：{ challengeId, challenge, accountId, created }
+错误：400 公钥格式无效；429 IP 限流
 
 POST /api/account/verify
 请求：{ publicKey, challengeId, signature }
 响应：{ success, accountId, sessionToken, expiresAt }
+错误：400 字段格式无效；401 签名失败、请求过于频繁、IP 绑定不一致或账号已禁用
+
+POST /api/account/profile
+请求：{ accountId, authToken, displayName? }
+响应：{ id, displayName }
+错误：401 认证失效；400 昵称长度不在 1-20 之间；404 账号不存在
 ```
+
+- `challenge` 与 `verify` 均会校验 `publicKey`、`challengeId`、`signature` 等字段长度；`verify` 还会校验 challenge 请求时的 IP 摘要是否一致
+- `displayName` 传 `null` 表示清空昵称；不传则仅查询当前资料
 
 客户端使用 Web Crypto API 生成 ECDSA P-256 密钥对并签名 challenge。私钥不会发送到服务端；导出凭据使用用户设置的密码进行 AES-GCM 加密。清除浏览器网站数据后，需要通过导入凭据重新恢复账号。
 
@@ -567,7 +586,7 @@ POST /api/account/verify
 
 ## 🔒 安全性说明
 
-- 本应用面向演示与学习场景，虽然永久账号已经提供公钥 challenge-response 认证，但当前仍没有端到端加密、完善的速率限制或完整的内容校验，不应直接用于敏感通信
+- 本应用面向演示与学习场景，虽然永久账号已经提供公钥 challenge-response 认证，并对 challenge/verify 接口做了 IP 限流、失败锁定和 IP 绑定校验，但当前仍没有端到端加密或完整的内容校验，不应直接用于敏感通信
 - 永久账号的私钥只保存在浏览器 IndexedDB；服务端无法替用户找回丢失的私钥。加密凭据文件应妥善保管，导入密码不会上传到服务端
 - 临时 ID 是访问身份凭据；获得某个 ID 的人可能冒用该身份，24 小时过期机制只是生命周期控制，不构成隐私或身份安全保证
 - 聊天内容以明文存储在服务端 SQLite；WebRTC 媒体由浏览器加密传输，但信令与普通消息仍需依赖 HTTPS/WSS 保护传输链路

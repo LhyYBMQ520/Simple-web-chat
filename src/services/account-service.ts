@@ -7,10 +7,29 @@ import { ACCOUNT_CHAT_DB_DIR, ACCOUNT_DB_DIR, SESSION_DB_DIR } from '../config/c
 const CHALLENGE_TTL = 2 * 60 * 1000;
 const SESSION_TTL = 30 * 24 * 60 * 60 * 1000;
 
+// 安全限制常量
+const CHALLENGE_RATE_LIMIT_WINDOW = 60 * 1000;
+const CHALLENGE_RATE_LIMIT_MAX = 10;
+const VERIFY_RATE_LIMIT_WINDOW = 60 * 1000;
+const VERIFY_RATE_LIMIT_MAX = 10;
+const VERIFY_FAILURE_WINDOW = 10 * 60 * 1000;
+const VERIFY_FAILURE_MAX = 10;
+
 interface ChallengeRecord {
   publicKey: string;
   challenge: string;
   expiresAt: number;
+  ipHash: string;
+}
+
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+interface FailureEntry {
+  count: number;
+  resetAt: number;
 }
 
 export interface ConversationRecord {
@@ -21,8 +40,8 @@ export interface ConversationRecord {
 }
 
 export interface AccountService {
-  createChallenge(publicKey: string): { challengeId: string; challenge: string; accountId: string; created: boolean };
-  verifyChallenge(publicKey: string, challengeId: string, signature: string): { accountId: string; sessionToken: string; expiresAt: number } | null;
+  createChallenge(publicKey: string, ip: string): { challengeId: string; challenge: string; accountId: string; created: boolean } | null;
+  verifyChallenge(publicKey: string, challengeId: string, signature: string, ip: string): { accountId: string; sessionToken: string; expiresAt: number } | null;
   verifySession(token: string, accountId: string): boolean;
   getSessionAccountId(token: string): string | null;
   getAccount(accountId: string): { id: string; displayName: string | null } | null;
@@ -45,6 +64,43 @@ function base64Url(data: Buffer): string {
 
 function accountIdFor(publicKey: string): string {
   return `p_${crypto.createHash('sha256').update(publicKey).digest('hex').slice(0, 24)}`;
+}
+
+function hashClientFingerprint(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex').slice(0, 32);
+}
+
+function checkRateLimit(map: Map<string, RateLimitEntry>, key: string, max: number, window: number): boolean {
+  const now = Date.now();
+  const entry = map.get(key);
+  if (!entry || entry.resetAt <= now) {
+    map.set(key, { count: 1, resetAt: now + window });
+    return true;
+  }
+  if (entry.count >= max) return false;
+  entry.count++;
+  return true;
+}
+
+function recordFailure(map: Map<string, FailureEntry>, key: string, max: number, window: number): boolean {
+  const now = Date.now();
+  const entry = map.get(key);
+  if (!entry || entry.resetAt <= now) {
+    map.set(key, { count: 1, resetAt: now + window });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= max;
+}
+
+function isLockedOut(map: Map<string, FailureEntry>, key: string): boolean {
+  const entry = map.get(key);
+  if (!entry) return false;
+  if (entry.resetAt <= Date.now()) {
+    map.delete(key);
+    return false;
+  }
+  return entry.count >= VERIFY_FAILURE_MAX;
 }
 
 export function createAccountService(): AccountService {
@@ -83,33 +139,84 @@ export function createAccountService(): AccountService {
   );`);
 
   const challenges = new Map<string, ChallengeRecord>();
+  const challengeRateLimits = new Map<string, RateLimitEntry>();
+  const verifyRateLimits = new Map<string, RateLimitEntry>();
+  const verifyFailuresByIP = new Map<string, FailureEntry>();
+  const verifyFailuresByPublicKey = new Map<string, FailureEntry>();
 
-  function createChallenge(publicKey: string) {
+  function createChallenge(publicKey: string, ip: string) {
+    const ipHash = hashClientFingerprint(ip);
+    if (!checkRateLimit(challengeRateLimits, ipHash, CHALLENGE_RATE_LIMIT_MAX, CHALLENGE_RATE_LIMIT_WINDOW)) {
+      console.log(`[challenge 限流] IP hash: ${ipHash}`);
+      return null;
+    }
     const existing = db.prepare('SELECT id FROM accounts WHERE public_key=? AND disabled=0').get(publicKey) as { id: string } | undefined;
     const accountId = existing?.id || accountIdFor(publicKey);
     const challengeId = base64Url(crypto.randomBytes(18));
     const challenge = base64Url(crypto.randomBytes(32));
-    challenges.set(challengeId, { publicKey, challenge, expiresAt: Date.now() + CHALLENGE_TTL });
+    challenges.set(challengeId, { publicKey, challenge, expiresAt: Date.now() + CHALLENGE_TTL, ipHash });
     return { challengeId, challenge, accountId, created: !existing };
   }
 
-  function verifyChallenge(publicKey: string, challengeId: string, signature: string) {
+  function verifyChallenge(publicKey: string, challengeId: string, signature: string, ip: string) {
+    const ipHash = hashClientFingerprint(ip);
+
+    if (isLockedOut(verifyFailuresByIP, ipHash) || isLockedOut(verifyFailuresByPublicKey, publicKey)) {
+      console.log(`[verify 锁定] 失败次数过多`);
+      return null;
+    }
+    if (!checkRateLimit(verifyRateLimits, ipHash, VERIFY_RATE_LIMIT_MAX, VERIFY_RATE_LIMIT_WINDOW)) {
+      console.log(`[verify 限流] IP hash: ${ipHash}`);
+      return null;
+    }
+
     const record = challenges.get(challengeId);
     challenges.delete(challengeId);
-    if (!record || record.publicKey !== publicKey || record.expiresAt < Date.now()) return null;
+    if (!record || record.publicKey !== publicKey || record.expiresAt < Date.now()) {
+      recordFailure(verifyFailuresByIP, ipHash, VERIFY_FAILURE_MAX, VERIFY_FAILURE_WINDOW);
+      recordFailure(verifyFailuresByPublicKey, publicKey, VERIFY_FAILURE_MAX, VERIFY_FAILURE_WINDOW);
+      return null;
+    }
 
+    if (record.ipHash !== ipHash) {
+      console.log(`[verify 失败] IP 绑定不匹配`);
+      recordFailure(verifyFailuresByIP, ipHash, VERIFY_FAILURE_MAX, VERIFY_FAILURE_WINDOW);
+      recordFailure(verifyFailuresByPublicKey, publicKey, VERIFY_FAILURE_MAX, VERIFY_FAILURE_WINDOW);
+      return null;
+    }
+
+    let verified = false;
     try {
       const keyObject = crypto.createPublicKey({ key: Buffer.from(publicKey, 'base64url'), format: 'der', type: 'spki' });
       const verifier = crypto.createVerify('SHA256');
       verifier.update(Buffer.from(record.challenge, 'utf8'));
       verifier.end();
-      if (!verifier.verify({ key: keyObject, dsaEncoding: 'ieee-p1363' }, Buffer.from(signature, 'base64url'))) return null;
+      verified = verifier.verify({ key: keyObject, dsaEncoding: 'ieee-p1363' }, Buffer.from(signature, 'base64url'));
     } catch {
+      verified = false;
+    }
+
+    if (!verified) {
+      recordFailure(verifyFailuresByIP, ipHash, VERIFY_FAILURE_MAX, VERIFY_FAILURE_WINDOW);
+      recordFailure(verifyFailuresByPublicKey, publicKey, VERIFY_FAILURE_MAX, VERIFY_FAILURE_WINDOW);
       return null;
     }
 
+    // 失败计数清零
+    verifyFailuresByIP.delete(ipHash);
+    verifyFailuresByPublicKey.delete(publicKey);
+
     const now = Date.now();
     const accountId = accountIdFor(publicKey);
+    const account = db.prepare('SELECT id FROM accounts WHERE public_key=?').get(publicKey) as { id: string } | undefined;
+    if (account) {
+      // 账号已存在：检查是否被禁用
+      const disabled = db.prepare('SELECT disabled FROM accounts WHERE id=?').get(account.id) as { disabled: number } | undefined;
+      if (disabled && disabled.disabled) {
+        console.log(`[verify 失败] 账号已禁用: ${account.id}`);
+        return null;
+      }
+    }
     db.prepare(`INSERT INTO accounts (id, public_key, created_at, last_login_at)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(public_key) DO UPDATE SET last_login_at=excluded.last_login_at`).run(accountId, publicKey, now, now);
@@ -130,6 +237,12 @@ export function createAccountService(): AccountService {
       sessionDB.prepare('DELETE FROM account_sessions WHERE token_hash=?').run(hash);
       return false;
     }
+    // 检查账号是否被禁用
+    const account = db.prepare('SELECT disabled FROM accounts WHERE id=?').get(accountId) as { disabled: number } | undefined;
+    if (account && account.disabled) {
+      sessionDB.prepare('DELETE FROM account_sessions WHERE account_id=?').run(accountId);
+      return false;
+    }
     return true;
   }
 
@@ -143,6 +256,12 @@ export function createAccountService(): AccountService {
     const hash = crypto.createHash('sha256').update(token).digest('hex');
     const row = sessionDB.prepare('SELECT account_id, expires_at FROM account_sessions WHERE token_hash=?').get(hash) as { account_id: string; expires_at: number } | undefined;
     if (!row || row.expires_at <= Date.now()) return null;
+    // 检查账号是否被禁用
+    const account = db.prepare('SELECT disabled FROM accounts WHERE id=?').get(row.account_id) as { disabled: number } | undefined;
+    if (account && account.disabled) {
+      sessionDB.prepare('DELETE FROM account_sessions WHERE account_id=?').run(row.account_id);
+      return null;
+    }
     return row.account_id;
   }
 

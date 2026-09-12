@@ -38,7 +38,6 @@ export interface ConnectionHandlerDeps {
 type WSMessage =
   | { type: 'ping'; clientTime?: unknown }
   | { type: 'bind'; uid: string; authToken?: string }
-  | { type: 'profileUpdate'; displayName?: unknown }
   | { type: 'syncConversations'; conversations?: unknown }
   | { type: 'updateConversation'; peerId?: unknown; remark?: unknown; lastMessageTime?: unknown }
   | { type: 'deleteConversation'; peerId?: unknown }
@@ -159,21 +158,6 @@ export function createConnectionHandler({ clients, broadcastOnline, uidService, 
             ws.send(JSON.stringify({ type: 'error', message: '不允许跨账号类型通信' }));
             return;
           }
-        }
-
-        if (msg.type === 'profileUpdate') {
-          if (!uid || !uid.startsWith('p_') || !clients.has(uid)) return;
-          const displayName = msg.displayName === undefined || msg.displayName === null ? null : String(msg.displayName).trim();
-          if (displayName !== null && (displayName.length < 1 || displayName.length > 20)) return;
-          if (!accountService.updateDisplayName(uid, displayName)) return;
-          const profile = accountService.getAccount(uid);
-          if (!profile) return;
-          for (const peer of clients.values()) {
-            if (peer.identityType === 'permanent' && peer.ws.readyState === WebSocket.OPEN) {
-              peer.ws.send(JSON.stringify({ type: 'profile', profile }));
-            }
-          }
-          return;
         }
 
         if (msg.type === 'syncConversations') {

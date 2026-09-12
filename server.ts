@@ -81,20 +81,37 @@ app.post('/api/account/challenge', (req, res) => {
     res.status(400).json({ error: '公钥格式无效' });
     return;
   }
-  res.json(accountService.createChallenge(publicKey));
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+  const result = accountService.createChallenge(publicKey, ip);
+  if (!result) {
+    res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+    return;
+  }
+  res.json(result);
 });
 
 app.post('/api/account/verify', (req, res) => {
   const publicKey = typeof req.body?.publicKey === 'string' ? req.body.publicKey : '';
   const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId : '';
   const signature = typeof req.body?.signature === 'string' ? req.body.signature : '';
-  if (!publicKey || !challengeId || !signature) {
-    res.status(400).json({ error: '认证参数不完整' });
+  if (!/^[A-Za-z0-9_-]{80,1200}$/.test(publicKey)) {
+    res.status(400).json({ error: '公钥格式无效' });
     return;
   }
-  const result = accountService.verifyChallenge(publicKey, challengeId, signature);
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(challengeId)) {
+    res.status(400).json({ error: 'challengeId 格式无效' });
+    return;
+  }
+  if (!/^[A-Za-z0-9_-]{40,200}$/.test(signature)) {
+    res.status(400).json({ error: '签名格式无效' });
+    return;
+  }
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+  const result = accountService.verifyChallenge(publicKey, challengeId, signature, ip);
   if (!result) {
-    res.status(401).json({ error: '账号签名验证失败' });
+    res.status(401).json({ error: '账号签名验证失败或请求过于频繁' });
     return;
   }
   res.json({ success: true, ...result });
