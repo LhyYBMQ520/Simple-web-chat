@@ -191,8 +191,14 @@ export function createAccountService(): AccountService {
   function updateRemark(accountId: string, peerId: string, remark: string | null): boolean {
     const value = remark === null ? null : remark.trim();
     if (value !== null && value.length > 20) return false;
-    const result = db.prepare('UPDATE account_conversations SET remark=? WHERE account_id=? AND peer_id=?').run(value, accountId, peerId);
-    return result.changes > 0;
+    const existing = db.prepare('SELECT 1 FROM account_conversations WHERE account_id=? AND peer_id=?').get(accountId, peerId);
+    if (existing) {
+      db.prepare('UPDATE account_conversations SET remark=? WHERE account_id=? AND peer_id=?').run(value, accountId, peerId);
+    } else {
+      db.prepare('INSERT INTO account_conversations (account_id, peer_id, remark, last_message_time, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(accountId, peerId, value, null, Date.now());
+    }
+    return true;
   }
 
   function migrateConversationsFromChatFiles(accountId: string): void {

@@ -296,8 +296,10 @@
           state.sessions.push(conv.peerId);
           localSessions.add(conv.peerId);
         }
-        if (conv.remark && !state.remarks[conv.peerId]) {
+        if (conv.remark) {
           state.remarks[conv.peerId] = conv.remark;
+        } else if (conv.remark === null || conv.remark === '') {
+          delete state.remarks[conv.peerId];
         }
       });
       appStateModule.persistSessions(state);
