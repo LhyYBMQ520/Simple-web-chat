@@ -237,11 +237,49 @@ body {
   justify-content: space-between;
 }
 
+.identity-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
 #identityLabel {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.identity-credential-actions {
+  display: none;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.identity-credential-actions button {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.identity-credential-actions button:hover {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.identity-label-row.permanent .identity-credential-actions {
+  display: flex;
 }
 
 #myId .identity-value {
@@ -387,7 +425,8 @@ button:hover {
   }
 
   .sidebar .account-actions button:hover,
-  .sidebar .switch-identity-btn:hover {
+  .sidebar .switch-identity-btn:hover,
+  .sidebar .identity-credential-actions button:hover {
     border-color: #cbd5e1;
     background: #fff;
     color: #475569;
@@ -1083,6 +1122,17 @@ button:hover {
 
 /* 手机端响应式布局 */
 @media (max-width: 768px) {
+  .identity-credential-actions {
+    gap: 6px;
+  }
+
+  .identity-credential-actions button {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    font-size: 14px;
+  }
+
   .app {
     flex-direction: column;
     height: 100vh;

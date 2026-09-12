@@ -309,16 +309,17 @@
     const box = document.getElementById('permanentProfileActions');
     const input = document.getElementById('accountDisplayNameInput');
     const toggle = document.getElementById('toggleAccountDisplayModeBtn');
+    const credentialActions = document.querySelector('.identity-label-row');
     if (!box || !input || !toggle) return;
     const permanent = state.identityType === 'permanent';
     box.style.display = permanent ? 'flex' : 'none';
+    if (credentialActions) credentialActions.classList.toggle('permanent', permanent);
     input.value = state.accountDisplayName || '';
     toggle.disabled = !state.accountDisplayName;
     toggle.innerHTML = state.accountDisplayMode === 'nickname'
       ? '<i class="fa-solid fa-id-card"></i> 显示 ID'
       : '<i class="fa-solid fa-address-card"></i> 显示昵称';
   }
-
   function handleError(d) {
     console.error('[后端错误]', d.message);
     if (d.message.includes('过期')) {

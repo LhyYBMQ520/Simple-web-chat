@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=202608241320">
+  <link rel="stylesheet" href="css/style.css?v=202609121816">
   <title>L Chat</title>
 </head>
 
@@ -57,7 +57,13 @@
       </div>
       <div class="sessions" id="sessions"></div>
       <div class="sidebar-footer">
-        <div id="identityLabel" style="display:flex;align-items:center;gap:6px;margin-bottom:4px">我的ID（24H 有效期）</div>
+        <div class="identity-label-row">
+          <div id="identityLabel">我的ID（24H 有效期）</div>
+          <div class="identity-credential-actions">
+            <button id="exportAccountBtn" type="button" title="导出永久账号凭据" aria-label="导出永久账号凭据"><i class="fa-solid fa-download"></i></button>
+            <button id="importAccountBtn" type="button" title="导入永久账号凭据" aria-label="导入永久账号凭据"><i class="fa-solid fa-upload"></i></button>
+          </div>
+        </div>
         <div id="myId"></div>
         <div class="account-actions">
           <div id="permanentProfileActions" style="display:none">
@@ -65,8 +71,6 @@
             <button id="saveAccountDisplayNameBtn" type="button" title="保存昵称"><i class="fa-solid fa-check"></i> 保存昵称</button>
             <button id="toggleAccountDisplayModeBtn" type="button" title="切换显示昵称或 ID"><i class="fa-solid fa-id-card"></i> 显示 ID</button>
           </div>
-          <button id="exportAccountBtn" type="button" title="导出永久账号凭据"><i class="fa-solid fa-download"></i> 导出凭据</button>
-          <button id="importAccountBtn" type="button" title="导入永久账号凭据"><i class="fa-solid fa-upload"></i> 导入凭据</button>
           <input id="accountCredentialInput" type="file" accept="application/json" hidden>
         </div>
         <button id="switchIdentityModeBtn" class="switch-identity-btn" type="button"></button>
@@ -179,6 +183,6 @@
   <script src="js/file-upload-module.js?v=202608240324"></script>
   <script src="js/emoji-data.js?v=202608240324"></script>
   <script src="js/emoji-module.js?v=202608240324"></script>
-  <script src="js/script.js?v=202609120001"></script>
+  <script src="js/script.js?v=202609121816"></script>
 </body>
 </html>
