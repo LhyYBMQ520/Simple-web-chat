@@ -8,7 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=202609122045">
+  <script>
+    // 尽早触发 Noto Color Emoji 字体加载，减少首次打开表情面板时的方块/默认字体
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load("16px 'Noto Color Emoji'");
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css?v=202609122108">
   <title>L Chat</title>
 </head>
 
