@@ -2,6 +2,9 @@
   const DB_NAME = 'lchat-account';
   const STORE = 'keys';
 
+  // 本次会话是否刚刚新建了永久账号密钥（需要提醒用户尽快导出凭据）
+  let pendingCredentialExport = false;
+
   function bytesToBase64Url(bytes) {
     let binary = '';
     new Uint8Array(bytes).forEach(byte => { binary += String.fromCharCode(byte); });
@@ -221,7 +224,10 @@
     if (mode === 'permanent') {
       if (!await readKey('keyPair') || previousMode !== 'permanent') {
         const restored = await choosePermanentAccount();
-        if (!restored) await deleteKey('keyPair');
+        if (!restored) {
+          await deleteKey('keyPair');
+          pendingCredentialExport = true;
+        }
       }
       const account = await authenticate();
       state.identityType = 'permanent';
@@ -234,5 +240,12 @@
     localStorage.setItem('chatIdentityMode', 'guest');
   }
 
-  global.ChatAccountModule = { initialize, exportCredential, importCredential, switchMode, getProfile, saveProfile };
+  // script.js 在初始化完成后调用，用于决定是否弹出“尽快导出凭据”的提醒；读取后即清除标记
+  function consumeCredentialExportPending() {
+    const pending = pendingCredentialExport;
+    pendingCredentialExport = false;
+    return pending;
+  }
+
+  global.ChatAccountModule = { initialize, exportCredential, importCredential, switchMode, getProfile, saveProfile, consumeCredentialExportPending };
 })(window);

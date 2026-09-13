@@ -343,6 +343,40 @@
       ? '<i class="fa-solid fa-id-card"></i> 显示 ID'
       : '<i class="fa-solid fa-address-card"></i> 显示昵称';
   }
+
+  // 刚创建永久账号时，高亮导出凭据按钮并用小浮窗提醒尽快导出
+  function hideCredentialExportHint() {
+    const hint = document.getElementById('credentialExportHint');
+    if (hint) hint.remove();
+    const exportBtn = document.getElementById('exportAccountBtn');
+    if (exportBtn) exportBtn.classList.remove('credential-export-highlight');
+  }
+
+  function showCredentialExportHint() {
+    const exportBtn = document.getElementById('exportAccountBtn');
+    if (!exportBtn) return;
+    if (!document.getElementById('credentialExportHint')) {
+      const row = exportBtn.closest('.identity-label-row') || document.querySelector('.identity-label-row');
+      if (!row) return;
+      const hint = document.createElement('div');
+      hint.id = 'credentialExportHint';
+      hint.className = 'credential-export-hint';
+      hint.setAttribute('role', 'note');
+      hint.innerHTML =
+        '<span class="credential-export-hint-text">' +
+          '请点击上方 <i class="fa-solid fa-download"></i> 立即导出凭据并妥善保存：' +
+          '永久账号的私钥只保存在本浏览器中，一旦切换账号模式或清除浏览器网站数据，就无法再找回该账号及其会话。' +
+        '</span>' +
+        '<button type="button" class="credential-export-hint-close" title="知道了" aria-label="关闭提醒">' +
+          '<i class="fa-solid fa-xmark"></i>' +
+        '</button>';
+      hint.querySelector('.credential-export-hint-close').onclick = hideCredentialExportHint;
+      row.appendChild(hint);
+    }
+    exportBtn.classList.remove('credential-export-highlight');
+    void exportBtn.offsetWidth;
+    exportBtn.classList.add('credential-export-highlight');
+  }
   function handleError(d) {
     console.error('[后端错误]', d.message);
     if (d.message.includes('过期')) {
@@ -828,7 +862,14 @@
       switchIdentityModeBtn.innerHTML = state.identityType === 'permanent'
         ? '<i class="fa-solid fa-user-clock"></i> 切换到游客模式'
         : '<i class="fa-solid fa-key"></i> 切换到永久账号';
-      switchIdentityModeBtn.onclick = () => accountModule.switchMode(state);
+      switchIdentityModeBtn.onclick = () => {
+        hideCredentialExportHint();
+        accountModule.switchMode(state);
+      };
+    }
+    // 刚点击“创建新账号”时提醒导出凭据
+    if (state.identityType === 'permanent' && typeof accountModule.consumeCredentialExportPending === 'function' && accountModule.consumeCredentialExportPending()) {
+      showCredentialExportHint();
     }
     wsModule.connect();
     render();
@@ -836,7 +877,10 @@
     document.getElementById('sendRequestBtn').onclick = sendRequest;
     document.getElementById('exportAccountBtn').onclick = async () => {
       if (state.identityType !== 'permanent') return alert('游客模式没有永久账号凭据');
-      try { await accountModule.exportCredential(); } catch (err) { alert('导出凭据失败'); }
+      try {
+        await accountModule.exportCredential();
+        hideCredentialExportHint();
+      } catch (err) { alert('导出凭据失败'); }
     };
     document.getElementById('importAccountBtn').onclick = () => document.getElementById('accountCredentialInput').click();
     document.getElementById('accountCredentialInput').onchange = async event => {
